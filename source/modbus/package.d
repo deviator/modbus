@@ -1,6 +1,7 @@
 module modbus;
 
-public import modbus.exception;
-public import modbus.protocol;
-public import modbus.iface;
-public import modbus.backend.rtu;
+public:
+import modbus.exception;
+import modbus.protocol;
+import modbus.iface;
+import modbus.backend.rtu;

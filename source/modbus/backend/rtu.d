@@ -8,6 +8,8 @@ import modbus.exception;
 import modbus.iface;
 import modbus.protocol;
 
+version (unittest) static this() { sharedLog = new NullLogger; }
+
 class RTU : Modbus.Backend
 {
     SerialPortIface com;
