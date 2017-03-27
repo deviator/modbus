@@ -58,10 +58,10 @@ public:
 
         void send()
         {
+            scope (exit) idx = 0;
             append(cast(const(void)[])(crc16(buffer[0..idx])[]));
             com.write(buffer[0..idx]);
             .trace("write bytes: ", buffer[0..idx]);
-            idx = 0;
         }
 
         Response read(size_t expectedBytes)
@@ -82,7 +82,7 @@ public:
             if (tmp.length > expectedBytes)
             {
                 .warningf("receive more bytes what expected (%d): %(0x%02x %)",
-                            expectedBytes, cast(ubyte[])res.data[expectedBytes..$]);
+                            expectedBytes, cast(ubyte[])tmp[expectedBytes..$]);
 
                 tmp = tmp[0..expectedBytes];
             }
@@ -102,6 +102,7 @@ protected:
 
     void write(T)(T v)
     {
+        scope (failure) idx = 0;
         //                      CRC
         enforce(T.sizeof + idx + 2 < buffer.length, "many args");
         buffer[].write(v, &idx);
