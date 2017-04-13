@@ -3,5 +3,11 @@ module modbus;
 public:
 import modbus.exception;
 import modbus.protocol;
-import modbus.iface;
-import modbus.backend.rtu;
+
+version(withSerialPort)
+    import modbus.mbwbe;
+else
+{
+    import modbus.iface;
+    import modbus.backend.rtu;
+}

@@ -50,7 +50,8 @@ public:
 
     invariant
     {
-        assert(be.messageComplite);
+        if (be !is null)
+            assert(be.messageComplite);
     }
 
     this(Backend be) { this.be = enforce(be, "backend is null"); }
