@@ -17,7 +17,7 @@ mbus.readFrameGap = 5.msecs; // use for detect end of data pack
 
 You can configure library with custom serialport realization.
 For this past `subConfiguration "modbus" "custom"` to your `dub.sdl`
-or `"subConfigurations": { "somepackage": "glut-app" }` to your `dub.json`.
+or `"subConfigurations": { "modbus": "custom" }` to your `dub.json`.
 In this case `Modbus` don't manage your serial port or tcp connection.
 They uses through simple interfaces with `read` and `write` methods and
 you must close opened connections by yourself.
