@@ -1,6 +1,6 @@
-module modbus.iface;
+module modbus.backend.connection;
 
-interface SerialPortIface
+interface Connection
 {
     void write(const(void)[]);
     void[] read(void[] buffer);

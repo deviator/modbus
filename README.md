@@ -26,10 +26,12 @@ Example:
 
 ```d
 import myserialport;
+import modbus;
+import modbus.backend;
 
 auto com = new MySerialPort();
 
-auto mbus = new Modbus(new RTU(new class SerialPortIface{
+auto mbus = new Modbus(new RTU(new class Connection{
             override:
                 void write(const(void)[] msg) { com.write(msg); }
                 void[] read(void[] buffer) { return com.read(buffer); }

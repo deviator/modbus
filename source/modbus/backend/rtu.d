@@ -1,111 +1,44 @@
 module modbus.backend.rtu;
 
-import std.experimental.logger;
-import std.exception : enforce;
-import std.bitmanip;
+import modbus.backend.base;
 
-import modbus.exception;
-import modbus.iface;
-import modbus.protocol;
-
-version (unittest) static this() { sharedLog = new NullLogger; }
-
-class RTU : Modbus.Backend
+class RTU : BaseBackend!256
 {
-    SerialPortIface com;
-    ubyte[256] buffer;
-    size_t idx;
-
-    enum minimumMsgLength = 5;
-
-public:
-
-    this(SerialPortIface spi)
+    ///
+    this(Connection c)
     {
-        this.com = enforce(spi, "serial port is null");
+        super(c,
+        1 + // dev
+        1 + // fnc
+        2,  // CRC
+        0   // device number offset
+        );
     }
 
-    override
+override:
+    ///
+    void start(ubyte dev, ubyte func)
     {
-        void start(ubyte dev, ubyte func)
-        {
-            this.write(dev);
-            this.write(func);
-        }
-
-        void append(byte v) { this.write(v); }
-        void append(ubyte v) { this.write(v); }
-        void append(short v) { this.write(v); }
-        void append(ushort v) { this.write(v); }
-        void append(int v) { this.write(v); }
-        void append(uint v) { this.write(v); };
-        void append(long v) { this.write(v); };
-        void append(ulong v) { this.write(v); };
-        void append(float v) { this.write(v); };
-        void append(double v) { this.write(v); };
-
-        void append(const(void)[] v)
-        {
-            auto inc = v.length;
-            //                 CRC
-            enforce(inc + idx + 2 < buffer.length, "many args");
-            buffer[idx..idx+inc] = cast(ubyte[])v;
-            idx += inc;
-        };
-
-        bool messageComplite() const @property { return idx == 0; }
-        const(void)[] tempBuffer() const @property { return buffer[0..idx]; }
-
-        void send()
-        {
-            scope (exit) idx = 0;
-            append(cast(const(void)[])(crc16(buffer[0..idx])[]));
-            com.write(buffer[0..idx]);
-            .trace("write bytes: ", buffer[0..idx]);
-        }
-
-        Response read(size_t expectedBytes)
-        {
-            //              dev fnc CRC
-            expectedBytes += 1 + 1 + 2;
-
-            Response res;
-            auto tmp = com.read(buffer[]);
-
-            .trace(" read bytes: ", cast(ubyte[])tmp);
-
-            enforce(tmp.length >= minimumMsgLength,
-                new ReadDataLengthException(tmp.length < 1 ? 0 : (cast(ubyte[])tmp)[0],
-                                            tmp.length < 2 ? 0 : (cast(ubyte[])tmp)[1],
-                                            expectedBytes, tmp.length));
-
-            if (tmp.length > expectedBytes)
-            {
-                .warningf("receive more bytes what expected (%d): %(0x%02x %)",
-                            expectedBytes, cast(ubyte[])tmp[expectedBytes..$]);
-
-                tmp = tmp[0..expectedBytes];
-            }
-
-            res.dev = (cast(ubyte[])tmp)[0];
-            res.fnc = (cast(ubyte[])tmp)[1];
-
-            enforce(checkCRC(tmp), new CheckCRCException(res.dev, res.fnc));
-
-            res.data = tmp[2..$-2];
-
-            return res;
-        }
+        this.write(dev);
+        this.write(func);
     }
 
-protected:
-
-    void write(T)(T v)
+    ///
+    void send()
     {
-        scope (failure) idx = 0;
-        //                      CRC
-        enforce(T.sizeof + idx + 2 < buffer.length, "many args");
-        buffer[].write(v, &idx);
+        scope (exit) idx = 0;
+        append(cast(const(void)[])(crc16(buffer[0..idx])[]));
+        c.write(buffer[0..idx]);
+        .trace("write bytes: ", buffer[0..idx]);
+    }
+
+    ///
+    Response read(size_t expectedBytes)
+    {
+        auto res = baseRead(expectedBytes);
+        enforce(checkCRC(res.data), new CheckCRCException(res.dev, res.fnc));
+        res.data = res.data[devOffset+2..$-2];
+        return res;
     }
 }
 
@@ -115,16 +48,16 @@ unittest
 
     void[] buf;
 
-    auto rtu = new RTU(new class SerialPortIface
-            { override:
-                void write(const(void)[] t) { buf = t.dup; }
-                void[] read(void[] buffer)
-                {
-                    assert(buffer.length <= buf.length);
-                    buffer[0..buf.length] = buf[];
-                    return buffer[0..buf.length];
-                }
-            });
+    auto rtu = new RTU(new class Connection
+    { override:
+        void write(const(void)[] t) { buf = t.dup; }
+        void[] read(void[] buffer)
+        {
+            assert(buffer.length <= buf.length);
+            buffer[0..buf.length] = buf[];
+            return buffer[0..buf.length];
+        }
+    });
 
     enum C1 = ushort(10100);
     enum C2 = ushort(12345);
@@ -144,7 +77,7 @@ unittest
     assert(crc[1] == (cast(ubyte[])buf)[$-1]);
 }
 
-bool checkCRC(const(void)[] data)
+bool checkCRC(const(void)[] data) pure
 {
     auto msg = cast(const(ubyte[]))data;
     auto a = msg[$-2..$];

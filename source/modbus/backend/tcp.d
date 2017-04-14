@@ -1,32 +1,67 @@
+///
 module modbus.backend.tcp;
 
-import modbus.protocol;
+import modbus.backend.base;
 
-class TCP : Modbus.Backend
+///
+class TCP : BaseBackend!260
 {
+    ///
+    this(Connection c)
+    {
+        super(c,
+        2 + // transaction id
+        2 + // protocol id
+        2 + // packet length
+        1 + // dev
+        1,  // fnc
+        6   // device number offset
+        );
+    }
 
-public:
+override:
 
-abstract:
-//override:
-    void start(ubyte dev, ubyte func);
+    ///
+    void start(ubyte dev, ubyte func)
+    {
+        // transaction id
+        this.write(ushort(0));
+        // protocol id
+        this.write(ushort(0));
+        // packet length (change in send)
+        this.write(ushort(0));
+        this.write(dev);
+        this.write(func);
+    }
 
-    void append(byte);
-    void append(ubyte);
-    void append(short);
-    void append(ushort);
-    void append(int);
-    void append(uint);
-    void append(long);
-    void append(ulong);
-    void append(float);
-    void append(double);
+    ///
+    void send()
+    {
+        scope (exit) idx = 0;
+        // 4 is transport id and protocol id sizes
+        auto dsize = cast(ushort)(idx - 4);
 
-    void append(const(void)[]);
+        import std.bitmanip : nativeToBigEndian;
+        buffer[4..6] = nativeToBigEndian(dsize);
+        c.write(buffer[0..idx]);
+        .trace("write bytes: ", buffer[0..idx]);
+    }
 
-    const(void)[] tempMessage();
+    ///
+    Response read(size_t expectedBytes)
+    {
+        auto res = baseRead(expectedBytes);
+        auto tmp = cast(ubyte[])res.data;
 
-    void send();
+        import std.bitmanip : bigEndianToNative;
+        auto plen = bigEndianToNative!ushort(cast(ubyte[2])tmp[4..6]);
 
-    Response read(size_t expectedBytes);
+        //                       ids and pack len
+        enforce(tmp.length == plen+6,
+            new ReadDataLengthException(res.dev, res.fnc, plen+6, tmp.length));
+
+        res.data = tmp[devOffset+2..$];
+
+        return res;
+    }
 }
