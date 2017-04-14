@@ -1,6 +1,6 @@
 ### Modbus protocol
 
-Library provides modbus wrapper over RTU and TCP (WIP) connections.
+Library provides modbus wrapper over RTU and TCP connections.
 By default using `serialport` package.
 
 Simple usage:
@@ -13,6 +13,8 @@ mbus.readTimeout = 2.seconds;
 mbus.readFrameGap = 5.msecs; // use for detect end of data pack
 ```
 
+For tcp connection using `std.socket.TcpSocket`.
+
 ```d
 auto addr = "device_IP";
 ushort port = 502; // or 503
@@ -20,7 +22,7 @@ auto mbs = new ModbusTCP(new InternetAddress(addr, port));
 writeln(mbs.readInputRegisters(1, 17, 1));
 ```
 
-`ModbusRTU` close serial port in destructor.
+`ModbusRTU` and `ModbusTCP` close serial port and socket in destructors.
 
 You can configure library with custom serialport realization.
 For this past `subConfiguration "modbus" "custom"` to your `dub.sdl`
