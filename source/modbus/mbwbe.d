@@ -56,7 +56,8 @@ version(withSerialPort)
 }
 
 import std.socket;
-public import std.socket : Address, InternetAddress, Internet6Address, UnixAddress;
+public import std.socket : Address, InternetAddress, Internet6Address;
+version (Posix) public import std.socket : UnixAddress;
 
 /// Modbus with TCP backend based on TcpSocket from std.socket
 class ModbusTCP : Modbus
