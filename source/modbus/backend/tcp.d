@@ -38,8 +38,8 @@ override:
     void send()
     {
         scope (exit) idx = 0;
-        // 4 is transport id and protocol id sizes
-        auto dsize = cast(ushort)(idx - 4);
+        // 6 is transport id and protocol id and pack length sizes
+        auto dsize = cast(ushort)(idx - 6);
 
         import std.bitmanip : nativeToBigEndian;
         buffer[4..6] = nativeToBigEndian(dsize);
@@ -50,7 +50,7 @@ override:
     ///
     Response read(size_t expectedBytes)
     {
-        auto res = baseRead(expectedBytes);
+        auto res = baseRead(expectedBytes, true);
         auto tmp = cast(ubyte[])res.data;
 
         import std.bitmanip : bigEndianToNative;

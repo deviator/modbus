@@ -72,11 +72,13 @@ protected:
         buffer[].write(v, &idx);
     }
 
-    Response baseRead(size_t expectedBytes)
+    Response baseRead(size_t expectedBytes, bool allocateOnlyExpected=false)
     {
         expectedBytes += minimumMsgLength;
 
-        auto tmp = cast(ubyte[])c.read(buffer[]);
+        auto buf = buffer[];
+        if (allocateOnlyExpected) buf = buf[0..expectedBytes];
+        auto tmp = cast(ubyte[])c.read(buf);
         .trace(" read bytes: ", tmp);
 
         Response res;

@@ -6,11 +6,18 @@ By default using `serialport` package.
 Simple usage:
 
 ```d
-auot mbus = new ModbusRTU(new SerialPort("/dev/ttyUSB0", 19200));
+auto mbus = new ModbusRTU(new SerialPort("/dev/ttyUSB0", 19200));
 
 mbus.writeTimeout = 100.msecs;
 mbus.readTimeout = 2.seconds;
 mbus.readFrameGap = 5.msecs; // use for detect end of data pack
+```
+
+```d
+auto addr = "device_IP";
+ushort port = 502; // or 503
+auto mbs = new ModbusTCP(new InternetAddress(addr, port));
+writeln(mbs.readInputRegisters(1, 17, 1));
 ```
 
 `ModbusRTU` close serial port in destructor.

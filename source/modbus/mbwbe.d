@@ -56,6 +56,7 @@ version(withSerialPort)
 }
 
 import std.socket;
+public import std.socket : Address, InternetAddress, Internet6Address, UnixAddress;
 
 /// Modbus with TCP backend based on TcpSocket from std.socket
 class ModbusTCP : Modbus
@@ -64,7 +65,7 @@ protected:
     TcpSocket _socket;
 
     void delegate() yieldFunc;
-    void yield() { if (yieldFunc !is null) yieldFunc(); }
+    private void yield() { if (yieldFunc !is null) yieldFunc(); }
 
     class C : Connection
     {
