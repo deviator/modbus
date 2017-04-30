@@ -6,18 +6,12 @@ import modbus.backend.base;
 ///
 class TCP : BaseBackend!260
 {
+protected:
+    // transaction id size + protocol id size + packet length size
+    enum packedServiceData = 2 + 2 + 2;
+public:
     ///
-    this(Connection c)
-    {
-        super(c,
-        2 + // transaction id
-        2 + // protocol id
-        2 + // packet length
-        1 + // dev
-        1,  // fnc
-        6   // device number offset
-        );
-    }
+    this(Connection c) { super(c, packedServiceData, 6); }
 
 override:
 
@@ -37,28 +31,29 @@ override:
     ///
     void send()
     {
-        scope (exit) idx = 0;
-        // 6 is transport id and protocol id and pack length sizes
-        auto dsize = cast(ushort)(idx - 6);
-
         import std.bitmanip : nativeToBigEndian;
+        scope (exit) idx = 0;
+        auto dsize = cast(ushort)(idx - packedServiceData);
         buffer[4..6] = nativeToBigEndian(dsize);
-        c.write(buffer[0..idx]);
-        .trace("write bytes: ", buffer[0..idx]);
+        conn.write(buffer[0..idx]);
+
+        debug (modbus_verbose)
+            .trace("write bytes: ", buffer[0..idx]);
     }
 
     ///
     Response read(size_t expectedBytes)
     {
+        import std.bitmanip : bigEndianToNative;
+
         auto res = baseRead(expectedBytes, true);
         auto tmp = cast(ubyte[])res.data;
 
-        import std.bitmanip : bigEndianToNative;
         auto plen = bigEndianToNative!ushort(cast(ubyte[2])tmp[4..6]);
 
-        //                       ids and pack len
-        enforce(tmp.length == plen+6,
-            new ReadDataLengthException(res.dev, res.fnc, plen+6, tmp.length));
+        if (tmp.length != plen+packedServiceData)
+            throw readDataLengthException(res.dev, res.fnc,
+                            plen+packedServiceData, tmp.length);
 
         res.data = tmp[devOffset+2..$];
 

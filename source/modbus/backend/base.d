@@ -1,32 +1,54 @@
+///
 module modbus.backend.base;
 
-public import std.experimental.logger;
-public import std.exception : enforce;
+debug (modbus_verbose)
+{
+    public import std.experimental.logger;
+
+    version (unittest)
+        static this() { sharedLog = new NullLogger; }
+}
 
 import modbus.protocol;
 public import modbus.exception;
 public import modbus.backend.connection;
 
-version (unittest) static this() { sharedLog = new NullLogger; }
+/++ Basic functionality of Modbus.Backend
 
+    Params:
+    BUFFER_SIZE - static size of message buffer
+ +/
 class BaseBackend(size_t BUFFER_SIZE) : Modbus.Backend
 {
 protected:
-    Connection c;
+    Connection conn;
     ubyte[BUFFER_SIZE] buffer;
     size_t idx;
-    immutable(size_t) minimumMsgLength;
-    immutable(size_t) devOffset;
+    immutable size_t minimumMsgLength;
+    immutable size_t devOffset;
+    immutable size_t funcOffset;
+    immutable size_t serviceData;
 
 public:
-    this(Connection c, size_t minMsgLen, size_t deviceOffset)
+
+    /++
+        Params:
+        c - connection
+        serviceData - CRC for RTU, protocol id for TCP etc
+        deviceOffset - offset of device number in message
+        functionOffset - offset of function number in message
+     +/
+    this(Connection c, size_t serviceData, size_t deviceOffset, ptrdiff_t functionOffset=-1)
     {
-        this.c = enforce(c, new ModbusException("connection is null"));
-        minimumMsgLength = minMsgLen;
+        if (c is null) throw modbusException("connection is null");
+        conn = c;
+        this.serviceData = serviceData;
         devOffset = deviceOffset;
+        funcOffset = functionOffset != -1 ? functionOffset : deviceOffset + 1;
+        minimumMsgLength = serviceData + 2; // dev and func
     }
 
-    abstract
+    abstract override
     {
         void start(ubyte dev, ubyte func);
         void send();
@@ -48,13 +70,15 @@ public:
 
         void append(const(void)[] v)
         {
+            scope (failure) idx = 0;
             auto inc = v.length;
-            //                 CRC
-            enforce(inc + idx + 2 < buffer.length,
-                new ModbusException("many args"));
+            if (idx + inc + serviceData >= buffer.length)
+                throw modbusException("many args");
             buffer[idx..idx+inc] = cast(ubyte[])v;
             idx += inc;
-        };
+            debug (modbus_verbose)
+                .trace("append msg buffer data: ", buffer[]);
+        }
 
         bool messageComplite() const @property { return idx == 0; }
         const(void)[] tempBuffer() const @property { return buffer[0..idx]; }
@@ -66,10 +90,11 @@ protected:
     {
         import std.bitmanip : write;
         scope (failure) idx = 0;
-        //                      CRC
-        enforce(T.sizeof + idx + 2 < buffer.length,
-                new ModbusException("many args"));
+        if (idx + T.sizeof + serviceData < buffer.length)
+            throw modbusException("many args");
         buffer[].write(v, &idx);
+        debug (modbus_verbose)
+            .trace("append msg buffer data: ", buffer[]);
     }
 
     Response baseRead(size_t expectedBytes, bool allocateOnlyExpected=false)
@@ -78,21 +103,24 @@ protected:
 
         auto buf = buffer[];
         if (allocateOnlyExpected) buf = buf[0..expectedBytes];
-        auto tmp = cast(ubyte[])c.read(buf);
-        .trace(" read bytes: ", tmp);
+        auto tmp = cast(ubyte[])conn.read(buf);
+
+        debug (modbus_verbose)
+            .trace(" read bytes: ", tmp);
 
         Response res;
-        res.dev = tmp.length < devOffset+1 ? 0 : tmp[devOffset+0];
-        res.fnc = tmp.length < devOffset+2 ? 0 : tmp[devOffset+1];
+        res.dev = tmp.length < devOffset+1 ? 0 : tmp[devOffset];
+        res.fnc = tmp.length < funcOffset+1 ? 0 : tmp[funcOffset];
         res.data = tmp;
 
-        enforce(tmp.length >= minimumMsgLength+1,
-            new ReadDataLengthException(res.dev, res.fnc, expectedBytes, tmp.length));
+        if (tmp.length < minimumMsgLength+1)
+            throw readDataLengthException(res.dev, res.fnc, expectedBytes, tmp.length);
 
         if (res.data.length > expectedBytes)
         {
-            .warningf("receive more bytes what expected (%d): %(0x%02x %)",
-                        expectedBytes, tmp[expectedBytes..$]);
+            debug (modbus_verbose)
+                .warningf("receive more bytes what expected (%d): %(0x%02x %)",
+                            expectedBytes, tmp[expectedBytes..$]);
 
             res.data = res.data[0..expectedBytes];
         }

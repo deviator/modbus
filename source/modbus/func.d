@@ -1,18 +1,20 @@
+///
 module modbus.func;
 
-import std.bitmanip;
-import std.traits : isArray, Unqual;
-import std.range : ElementType;
-
-auto bigEndianToNativeArr(T)(T[] data)
+/++ Set endian to native for array of values
+    Params:
+    data - array of values
+ +/
+auto bigEndianToNativeArr(T)(T[] data) @trusted @nogc pure nothrow
 {
+    import std.bitmanip : bigEndianToNative;
     foreach (ref val; data)
         val = bigEndianToNative!T(cast(ubyte[T.sizeof])
                 (cast(ubyte*)&val)[0..T.sizeof]);
     return data;
 }
 
-unittest
+@system unittest 
 {
     import std.algorithm : equal;
     auto data = cast(immutable(void)[])(cast(ubyte[])[0,0,0,1,0,0,0,2,0,0,0,3]);

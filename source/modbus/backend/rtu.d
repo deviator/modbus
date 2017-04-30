@@ -1,19 +1,17 @@
+///
 module modbus.backend.rtu;
 
 import modbus.backend.base;
 
+///
 class RTU : BaseBackend!256
 {
+protected:
+    enum lengthOfCRC = 2;
+
+public:
     ///
-    this(Connection c)
-    {
-        super(c,
-        1 + // dev
-        1 + // fnc
-        2,  // CRC
-        0   // device number offset
-        );
-    }
+    this(Connection c) { super(c, lengthOfCRC, 0); }
 
 override:
     ///
@@ -28,21 +26,23 @@ override:
     {
         scope (exit) idx = 0;
         append(cast(const(void)[])(crc16(buffer[0..idx])[]));
-        c.write(buffer[0..idx]);
-        .trace("write bytes: ", buffer[0..idx]);
+        conn.write(buffer[0..idx]);
+        debug (modbus_verbose)
+            .trace("write bytes: ", buffer[0..idx]);
     }
 
     ///
     Response read(size_t expectedBytes)
     {
         auto res = baseRead(expectedBytes);
-        enforce(checkCRC(res.data), new CheckCRCException(res.dev, res.fnc));
-        res.data = res.data[devOffset+2..$-2];
+        if (!checkCRC(res.data))
+            throw checkCRCException(res.dev, res.fnc);
+        res.data = res.data[devOffset+2..$-lengthOfCRC];
         return res;
     }
 }
 
-unittest
+@safe unittest
 {
     import std.algorithm;
 
@@ -77,7 +77,11 @@ unittest
     assert(crc[1] == (cast(ubyte[])buf)[$-1]);
 }
 
-bool checkCRC(const(void)[] data) pure
+/++ Check CRC16 of data
+    Params:
+    data - last two bytes used as CRC16
+ +/
+bool checkCRC(const(void)[] data) pure nothrow @trusted @nogc
 {
     auto msg = cast(const(ubyte[]))data;
     auto a = msg[$-2..$];
@@ -85,13 +89,17 @@ bool checkCRC(const(void)[] data) pure
     return a[0] == b[0] && a[1] == b[1];
 }
 
-unittest
+@safe unittest
 {
     immutable ubyte[] data = [0x02, 0x03, 0x00, 0x00, 0x00, 0x05, 0x85, 0xFA];
     assert(checkCRC(data));
 }
 
-ubyte[2] crc16(const(void)[] data) pure nothrow @trusted
+/++ Calculate CRC16
+    Params:
+    data - input data for calculation CRC16
+ +/
+ubyte[2] crc16(const(void)[] data) pure nothrow @trusted @nogc
 {
 
     ubyte hi = 0xFF;
@@ -109,7 +117,7 @@ ubyte[2] crc16(const(void)[] data) pure nothrow @trusted
     return [lo, hi];
 }
 
-unittest
+@safe unittest
 {
     immutable ubyte[] data = [0x02, 0x03, 0x00, 0x00, 0x00, 0x05];
     assert(crc16(data)[1] == 0xFA);
@@ -117,7 +125,7 @@ unittest
 }
 
 private:
-enum ubyte[] tblHi = [
+enum ubyte[256] tblHi = [
     0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0,
     0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41,
     0x00, 0xC1, 0x81, 0x40, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0,
@@ -145,7 +153,7 @@ enum ubyte[] tblHi = [
     0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0,
     0x80, 0x41, 0x00, 0xC1, 0x81, 0x40];
 
-enum ubyte[] tblLo = [
+enum ubyte[256] tblLo = [
     0x00, 0xC0, 0xC1, 0x01, 0xC3, 0x03, 0x02, 0xC2, 0xC6, 0x06,
     0x07, 0xC7, 0x05, 0xC5, 0xC4, 0x04, 0xCC, 0x0C, 0x0D, 0xCD,
     0x0F, 0xCF, 0xCE, 0x0E, 0x0A, 0xCA, 0xCB, 0x0B, 0xC9, 0x09,
