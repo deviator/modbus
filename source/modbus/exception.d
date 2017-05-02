@@ -29,9 +29,11 @@ ModbusException modbusException(string msg, string file=__FILE__, size_t line=__
 class ModbusDevException : ModbusException
 {
     ///
-    ubyte dev, fnc;
+    ulong dev;
     ///
-    this(ubyte dev, ubyte fnc, string msg, string file=__FILE__, size_t line=__LINE__)
+    ubyte fnc;
+    ///
+    this(ulong dev, ubyte fnc, string msg, string file=__FILE__, size_t line=__LINE__)
     {
         this.dev = dev;
         this.fnc = fnc;
@@ -43,7 +45,7 @@ class ModbusDevException : ModbusException
 class CheckCRCException : ModbusDevException
 {
     ///
-    this(ubyte dev, ubyte fnc, string file=__FILE__, size_t line=__LINE__)
+    this(ulong dev, ubyte fnc, string file=__FILE__, size_t line=__LINE__)
     {
         super(dev, fnc, format("dev %d fnc %d(0x%x) recive msg CRC check fails",
                     dev, fnc, fnc), file, line);
@@ -53,7 +55,7 @@ class CheckCRCException : ModbusDevException
 private __gshared preallocCheckCRCException = new CheckCRCException(0, 0);
 
 /// Returns: preallocated exception with new values of fields
-CheckCRCException checkCRCException(ubyte dev, ubyte fnc,
+CheckCRCException checkCRCException(ulong dev, ubyte fnc,
                                     string file=__FILE__, size_t line=__LINE__) @nogc
 {
     preallocCheckCRCException.msg = "check CRC fails";
@@ -74,7 +76,7 @@ class FunctionErrorException : ModbusDevException
     FunctionErrorCode code;
 
     ///
-    this(ubyte dev, ubyte fnc, ubyte res, ubyte code,
+    this(ulong dev, ubyte fnc, ubyte res, ubyte code,
             string file=__FILE__, size_t line=__LINE__)
     {
         this.res = res;
@@ -88,7 +90,7 @@ class FunctionErrorException : ModbusDevException
 private __gshared preallocFunctionErrorException = new FunctionErrorException(0,0,0,0);
 
 /// Returns: preallocated exception with new values of fields
-FunctionErrorException functionErrorException(ubyte dev, ubyte fnc, ubyte res, ubyte code,
+FunctionErrorException functionErrorException(ulong dev, ubyte fnc, ubyte res, ubyte code,
                                               string file=__FILE__, size_t line=__LINE__) @nogc
 {
     preallocFunctionErrorException.msg = "error while read function response";
@@ -107,7 +109,7 @@ class ReadDataLengthException : ModbusDevException
 {
     size_t expected, responseLength;
     ///
-    this(ubyte dev, ubyte fnc, size_t exp, size_t res,
+    this(ulong dev, ubyte fnc, size_t exp, size_t res,
             string file=__FILE__, size_t line=__LINE__)
     {
         expected = exp;
@@ -121,7 +123,7 @@ class ReadDataLengthException : ModbusDevException
 private __gshared preallocReadDataLengthException = new ReadDataLengthException(0,0,0,0);
 
 /// Returns: preallocated exception with new values of fields
-ReadDataLengthException readDataLengthException(ubyte dev, ubyte fnc, size_t exp, size_t res,
+ReadDataLengthException readDataLengthException(ulong dev, ubyte fnc, size_t exp, size_t res,
                                                 string file=__FILE__, size_t line=__LINE__) @nogc
 {
     preallocReadDataLengthException.msg = "error while read function response: wrong length";
