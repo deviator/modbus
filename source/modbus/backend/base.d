@@ -1,7 +1,7 @@
 ///
 module modbus.backend.base;
 
-version (modbusverbose)
+version (modbus_verbose)
     public import std.experimental.logger;
 
 import modbus.protocol;
@@ -72,7 +72,7 @@ public:
                 throw modbusException("many args");
             buffer[idx..idx+inc] = cast(ubyte[])v;
             idx += inc;
-            version (modbusverbose)
+            version (modbus_verbose)
                 .trace("append msg buffer data: ", buffer[0..idx]);
         }
 
@@ -91,7 +91,7 @@ protected:
         auto buf = buffer[];
         if (allocateOnlyExpected) buf = buf[0..expectedBytes];
         auto tmp = cast(ubyte[])conn.read(buf);
-        version (modbusverbose) .trace(" read bytes: ", tmp);
+        version (modbus_verbose) .trace(" read bytes: ", tmp);
 
         if (tmp.length < devOffset+sr.deviceTypeSize+functionTypeSize)
             throw readDataLengthException(0, 0, expectedBytes, tmp.length);
@@ -105,7 +105,7 @@ protected:
 
         if (res.data.length > expectedBytes)
         {
-            version (modbusverbose)
+            version (modbus_verbose)
                 .warningf("receive more bytes what expected (%d): %(0x%02x %)",
                             expectedBytes, tmp[expectedBytes..$]);
 

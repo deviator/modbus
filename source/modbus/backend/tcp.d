@@ -39,7 +39,7 @@ override:
         buffer[plo..plo+ushort.sizeof] = nativeToBigEndian(dsize);
         conn.write(buffer[0..idx]);
 
-        version (modbusverbose)
+        version (modbus_verbose)
             .trace("write bytes: ", buffer[0..idx]);
     }
 

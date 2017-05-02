@@ -1,5 +1,8 @@
 module modbus.backend.specrules;
 
+version (modbus_verbose)
+    import std.experimental.logger;
+
 ///
 interface SpecRules
 {
@@ -43,6 +46,7 @@ pure:
         const(void)[] packDF(ulong dev, ubyte fnc) 
         {
             import std.bitmanip : write;
+            assert(dev <= 254, "device number can't be more 254");
             buffer[].write(cast(ubyte)dev, 0);
             buffer[].write(fnc, 1);
             return buffer[0..2];
@@ -53,10 +57,10 @@ pure:
             import std.bitmanip : peek;
             auto buf = cast(const(ubyte)[])vbuf;
             if (buf.length >= 1) dev = buf.peek!ubyte(0);
-            else version (modbusverbose)
+            else version (modbus_verbose) debug
                 .error("short readed message: can't read device number");
             if (buf.length >= 2) fnc = buf.peek!ubyte(1);
-            else version (modbusverbose)
+            else version (modbus_verbose) debug
                 .error("short readed message: can't read function number");
         }
 
@@ -88,8 +92,8 @@ public pure override:
     {
         import std.bitmanip : write;
         size_t idx = 0;
-        buffer[].write(cast(ushort)(dev&0xff), &idx);
-        buffer[].write(cast(ushort)((dev>>16)&0xff), &idx);
+        buffer[].write(cast(ushort)(dev), &idx);
+        buffer[].write(cast(ushort)(dev>>16), &idx);
         buffer[].write(fnc, &idx);
         return buffer[0..idx];
     }
@@ -105,10 +109,10 @@ public pure override:
             const b = buf.peek!ushort(&idx);
             dev = (b << 16) | a;
         }
-        else version (modbusverbose)
+        else version (modbus_verbose) debug
             .error("short readed message: can't read device number");
         if (buf.length >= idx) fnc = buf.peek!ubyte(idx);
-        else version (modbusverbose)
+        else version (modbus_verbose) debug
             .error("short readed message: can't read function number");
     }
 }

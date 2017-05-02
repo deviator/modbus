@@ -74,9 +74,9 @@ protected:
 
             while (sent != msg.length)
             {
-                auto res = _socket.send(msg[sent..$]);
+                const res = _socket.send(msg[sent..$]);
                 if (res == Socket.ERROR)
-                    throw new ModbusException("error while send data to tcp socket");
+                    throw modbusException("error while send data to tcp socket");
 
                 sent += res;
                 yield();
@@ -91,7 +91,7 @@ protected:
             {
                 res = _socket.receive(buffer[received..$]);
                 if (res == Socket.ERROR)
-                    throw new ModbusException("error while receive data from tcp socket");
+                    throw modbusException("error while receive data from tcp socket");
 
                 received += res;
                 yield();

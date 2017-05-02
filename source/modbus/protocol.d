@@ -2,7 +2,7 @@
 module modbus.protocol;
 
 import std.bitmanip : BitArray;
-version (modbusverbose)
+version (modbus_verbose)
     import std.experimental.logger;
 
 public import modbus.exception;
@@ -116,7 +116,7 @@ public:
     {
         auto res = be.read(bytes);
 
-        version (modbusverbose)
+        version (modbus_verbose)
             if (res.dev != dev)
                 .warningf("receive from unexpected device %d (expect %d)",
                                 res.dev, dev);
