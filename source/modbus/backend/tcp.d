@@ -8,24 +8,25 @@ class TCP : BaseBackend!260
 {
 protected:
     // transaction id size + protocol id size + packet length size
-    enum packedServiceData = 2 + 2 + 2;
+    enum packedServiceData = ushort.sizeof * 3;
+    enum packedLengthOffset = ushort.sizeof * 2;
 public:
     ///
-    this(Connection c) { super(c, packedServiceData, 6); }
+    this(Connection c, SpecRules s=null)
+    { super(c, s, packedServiceData, packedServiceData); }
 
 override:
 
     ///
-    void start(ubyte dev, ubyte func)
+    void start(ulong dev, ubyte func)
     {
         // transaction id
-        this.write(ushort(0));
+        append(ushort(0));
         // protocol id
-        this.write(ushort(0));
+        append(ushort(0));
         // packet length (change in send)
-        this.write(ushort(0));
-        this.write(dev);
-        this.write(func);
+        append(ushort(0));
+        appendDF(dev, func);
     }
 
     ///
@@ -34,7 +35,8 @@ override:
         import std.bitmanip : nativeToBigEndian;
         scope (exit) idx = 0;
         auto dsize = cast(ushort)(idx - packedServiceData);
-        buffer[4..6] = nativeToBigEndian(dsize);
+        enum plo = packedLengthOffset;
+        buffer[plo..plo+ushort.sizeof] = nativeToBigEndian(dsize);
         conn.write(buffer[0..idx]);
 
         version (modbusverbose)
@@ -55,7 +57,7 @@ override:
             throw readDataLengthException(res.dev, res.fnc,
                             plen+packedServiceData, tmp.length);
 
-        res.data = tmp[devOffset+2..$];
+        res.data = tmp[devOffset+sr.deviceTypeSize+functionTypeSize..$];
 
         return res;
     }

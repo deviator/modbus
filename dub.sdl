@@ -13,3 +13,5 @@ configuration "serialport" {
 configuration "custom" {
     targetType "library"
 }
+
+//versions "modbusverbose"

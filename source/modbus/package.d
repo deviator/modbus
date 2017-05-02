@@ -4,15 +4,15 @@ module modbus;
 public:
 import modbus.exception;
 import modbus.protocol;
-import modbus.mbwbe;
+import modbus.facade;
 import modbus.backend.connection;
 
 unittest
 {
-    import modbus.backend.rtu;
     static import std.bitmanip;
     alias bwrite = std.bitmanip.write;
     alias bread = std.bitmanip.read;
+    import modbus.backend.rtu;
 
     static class ModbusEmulator
     {
@@ -25,7 +25,7 @@ unittest
             float floatValue; // 6
         }
 
-        DeviceData[2] regs;
+        DeviceData[ubyte] regs;
         ubyte[256] res;
         size_t idx;
 

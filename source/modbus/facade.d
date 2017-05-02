@@ -1,5 +1,5 @@
 // modbus with back end
-module modbus.mbwbe;
+module modbus.facade;
 
 import modbus.backend;
 import modbus.protocol;
@@ -33,11 +33,11 @@ version(Have_serialport)
                  readFrameGap = 4.msecs;
 
         ///
-        this(SerialPort sp)
+        this(SerialPort sp, SpecRules sr=null)
         {
             import std.exception : enforce;
             _com = enforce(sp, "serial port is null");
-            super(new RTU(new C));
+            super(new RTU(new C, sr));
         }
 
         @property
@@ -104,7 +104,7 @@ protected:
 public:
 
     ///
-    this(Address addr, void delegate() yieldFunc=null)
+    this(Address addr, void delegate() yieldFunc=null, SpecRules sr=null)
     {
         _socket = new TcpSocket(addr);
 
@@ -114,7 +114,7 @@ public:
             this.yieldFunc = yieldFunc;
         }
 
-        super(new TCP(new C));
+        super(new TCP(new C, sr));
     }
 
     @property

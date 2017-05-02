@@ -11,15 +11,11 @@ protected:
 
 public:
     ///
-    this(Connection c) { super(c, lengthOfCRC, 0); }
+    this(Connection c, SpecRules s=null) { super(c, s, lengthOfCRC, 0); }
 
 override:
     ///
-    void start(ubyte dev, ubyte func)
-    {
-        this.write(dev);
-        this.write(func);
-    }
+    void start(ulong dev, ubyte func) { appendDF(dev, func); }
 
     ///
     void send()
@@ -37,7 +33,7 @@ override:
         auto res = baseRead(expectedBytes);
         if (!checkCRC(res.data))
             throw checkCRCException(res.dev, res.fnc);
-        res.data = res.data[devOffset+2..$-lengthOfCRC];
+        res.data = res.data[devOffset+sr.deviceTypeSize+functionTypeSize..$-lengthOfCRC];
         return res;
     }
 }

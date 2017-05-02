@@ -7,6 +7,7 @@ version (modbusverbose)
 import modbus.protocol;
 public import modbus.exception;
 public import modbus.backend.connection;
+public import modbus.backend.specrules;
 
 /++ Basic functionality of Modbus.Backend
 
@@ -16,12 +17,14 @@ public import modbus.backend.connection;
 class BaseBackend(size_t BUFFER_SIZE) : Modbus.Backend
 {
 protected:
+    enum functionTypeSize = 1;
     Connection conn;
+    SpecRules sr;
+
     ubyte[BUFFER_SIZE] buffer;
     size_t idx;
     immutable size_t minimumMsgLength;
     immutable size_t devOffset;
-    immutable size_t funcOffset;
     immutable size_t serviceData;
 
 public:
@@ -30,38 +33,36 @@ public:
         Params:
         c - connection
         serviceData - CRC for RTU, protocol id for TCP etc
-        deviceOffset - offset of device number in message
-        functionOffset - offset of function number in message
+        deviceOffset - offset of device number (address) in message
+        deviceSize - size of device number type
      +/
-    this(Connection c, size_t serviceData, size_t deviceOffset, ptrdiff_t functionOffset=-1)
+    this(Connection c, SpecRules s, size_t serviceData, size_t deviceOffset)
     {
-        if (c is null) throw modbusException("connection is null");
+        if (c is null)
+            throw modbusException("connection is null");
         conn = c;
+        sr = s !is null ? s : new BasicSpecRules;
         this.serviceData = serviceData;
         devOffset = deviceOffset;
-        funcOffset = functionOffset != -1 ? functionOffset : deviceOffset + 1;
-        minimumMsgLength = serviceData + 2; // dev and func
+
+        minimumMsgLength = serviceData + sr.deviceTypeSize + functionTypeSize;
     }
 
     abstract override
     {
-        void start(ubyte dev, ubyte func);
+        void start(ulong dev, ubyte func);
         void send();
         Response read(size_t expectedBytes);
     }
 
     override
     {
-        void append(byte v) { this.write(v); }
-        void append(ubyte v) { this.write(v); }
-        void append(short v) { this.write(v); }
-        void append(ushort v) { this.write(v); }
-        void append(int v) { this.write(v); }
-        void append(uint v) { this.write(v); };
-        void append(long v) { this.write(v); };
-        void append(ulong v) { this.write(v); };
-        void append(float v) { this.write(v); };
-        void append(double v) { this.write(v); };
+        void append(byte v) { append(sr.pack(v)); }
+        void append(short v) { append(sr.pack(v)); }
+        void append(int v) { append(sr.pack(v)); }
+        void append(long v) { append(sr.pack(v)); };
+        void append(float v) { append(sr.pack(v)); };
+        void append(double v) { append(sr.pack(v)); };
 
         void append(const(void)[] v)
         {
@@ -81,17 +82,7 @@ public:
 
 protected:
 
-    void write(T)(T v)
-    {
-        static import std.bitmanip;
-        alias bwrite = std.bitmanip.write;
-        scope (failure) idx = 0;
-        if (idx + T.sizeof + serviceData >= buffer.length)
-            throw modbusException("many args");
-        bwrite(buffer[], v, &idx);
-        version (modbusverbose)
-            .trace("append msg buffer data: ", buffer[0..idx]);
-    }
+    void appendDF(ulong dev, ubyte fnc) { append(sr.packDF(dev, fnc)); }
 
     Response baseRead(size_t expectedBytes, bool allocateOnlyExpected=false)
     {
@@ -100,13 +91,13 @@ protected:
         auto buf = buffer[];
         if (allocateOnlyExpected) buf = buf[0..expectedBytes];
         auto tmp = cast(ubyte[])conn.read(buf);
+        version (modbusverbose) .trace(" read bytes: ", tmp);
 
-        version (modbusverbose)
-            .trace(" read bytes: ", tmp);
+        if (tmp.length < devOffset+sr.deviceTypeSize+functionTypeSize)
+            throw readDataLengthException(0, 0, expectedBytes, tmp.length);
 
         Response res;
-        res.dev = tmp.length < devOffset+1 ? 0 : tmp[devOffset];
-        res.fnc = tmp.length < funcOffset+1 ? 0 : tmp[funcOffset];
+        sr.peekDF(tmp[devOffset..$], res.dev, res.fnc);
         res.data = tmp;
 
         if (tmp.length < minimumMsgLength+1)
