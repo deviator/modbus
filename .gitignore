@@ -8,5 +8,5 @@ __dummy.html
 *.dll
 *.obj
 *.exe
-*test-library
+*-test-*
 *~

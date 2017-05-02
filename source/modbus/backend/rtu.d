@@ -27,7 +27,7 @@ override:
         scope (exit) idx = 0;
         append(cast(const(void)[])(crc16(buffer[0..idx])[]));
         conn.write(buffer[0..idx]);
-        debug (modbus_verbose)
+        version (modbusverbose)
             .trace("write bytes: ", buffer[0..idx]);
     }
 
@@ -42,9 +42,10 @@ override:
     }
 }
 
-@safe unittest
+unittest
 {
     import std.algorithm;
+    import std.bitmanip;
 
     void[] buf;
 

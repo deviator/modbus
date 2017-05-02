@@ -4,7 +4,7 @@ module modbus.mbwbe;
 import modbus.backend;
 import modbus.protocol;
 
-version(withSerialPort)
+version(Have_serialport)
 {
     public import std.datetime : Duration, dur, hnsecs, nsecs, msecs, seconds;
     public import serialport;
@@ -48,10 +48,7 @@ version(withSerialPort)
             const(SerialPort) com() const { return _com; }
         }
 
-        ~this()
-        {
-            com.destroy();
-        }
+        ~this() { _com.destroy(); }
     }
 }
 
@@ -128,8 +125,5 @@ public:
         const(TcpSocket) socket() const { return _socket; }
     }
 
-    ~this()
-    {
-        _socket.close();
-    }
+    ~this() { _socket.close(); }
 }

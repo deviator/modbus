@@ -37,7 +37,7 @@ override:
         buffer[4..6] = nativeToBigEndian(dsize);
         conn.write(buffer[0..idx]);
 
-        debug (modbus_verbose)
+        version (modbusverbose)
             .trace("write bytes: ", buffer[0..idx]);
     }
 

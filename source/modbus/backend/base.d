@@ -1,13 +1,8 @@
 ///
 module modbus.backend.base;
 
-debug (modbus_verbose)
-{
+version (modbusverbose)
     public import std.experimental.logger;
-
-    version (unittest)
-        static this() { sharedLog = new NullLogger; }
-}
 
 import modbus.protocol;
 public import modbus.exception;
@@ -76,8 +71,8 @@ public:
                 throw modbusException("many args");
             buffer[idx..idx+inc] = cast(ubyte[])v;
             idx += inc;
-            debug (modbus_verbose)
-                .trace("append msg buffer data: ", buffer[]);
+            version (modbusverbose)
+                .trace("append msg buffer data: ", buffer[0..idx]);
         }
 
         bool messageComplite() const @property { return idx == 0; }
@@ -88,13 +83,14 @@ protected:
 
     void write(T)(T v)
     {
-        import std.bitmanip : write;
+        static import std.bitmanip;
+        alias bwrite = std.bitmanip.write;
         scope (failure) idx = 0;
-        if (idx + T.sizeof + serviceData < buffer.length)
+        if (idx + T.sizeof + serviceData >= buffer.length)
             throw modbusException("many args");
-        buffer[].write(v, &idx);
-        debug (modbus_verbose)
-            .trace("append msg buffer data: ", buffer[]);
+        bwrite(buffer[], v, &idx);
+        version (modbusverbose)
+            .trace("append msg buffer data: ", buffer[0..idx]);
     }
 
     Response baseRead(size_t expectedBytes, bool allocateOnlyExpected=false)
@@ -105,7 +101,7 @@ protected:
         if (allocateOnlyExpected) buf = buf[0..expectedBytes];
         auto tmp = cast(ubyte[])conn.read(buf);
 
-        debug (modbus_verbose)
+        version (modbusverbose)
             .trace(" read bytes: ", tmp);
 
         Response res;
@@ -118,7 +114,7 @@ protected:
 
         if (res.data.length > expectedBytes)
         {
-            debug (modbus_verbose)
+            version (modbusverbose)
                 .warningf("receive more bytes what expected (%d): %(0x%02x %)",
                             expectedBytes, tmp[expectedBytes..$]);
 
