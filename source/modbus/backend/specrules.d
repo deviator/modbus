@@ -46,7 +46,7 @@ pure:
         const(void)[] packDF(ulong dev, ubyte fnc) 
         {
             import std.bitmanip : write;
-            assert(dev <= 254, "device number can't be more 254");
+            assert(dev <= 255, "device number can't be more 255");
             buffer[].write(cast(ubyte)dev, 0);
             buffer[].write(fnc, 1);
             return buffer[0..2];
