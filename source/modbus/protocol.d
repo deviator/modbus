@@ -17,6 +17,7 @@ protected:
 
 public:
 
+    ///
     static interface Backend
     {
         /// start building message
@@ -60,7 +61,7 @@ public:
 
         /++ Read data to temp message buffer
             Params:
-            expectedBytes - count of bytes in data section of message,
+            expectedBytes = count of bytes in data section of message,
                             exclude device address, function number, CRC and etc
          +/
         Response read(size_t expectedBytes);
@@ -133,10 +134,10 @@ public:
     /++ Write and read to modbus
 
         Params:
-        dev - slave device number
-        fnc - called function number
-        bytes - expected bytes for reading
-        args - sending data
+        dev = slave device number
+        fnc = called function number
+        bytes = expected bytes for reading
+        args = sending data
      +/
     const(void)[] request(Args...)(ulong dev, ubyte fnc, size_t bytes, Args args)
     {

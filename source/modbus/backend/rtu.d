@@ -76,7 +76,7 @@ unittest
 
 /++ Check CRC16 of data
     Params:
-    data - last two bytes used as CRC16
+    data = last two bytes used as CRC16
  +/
 bool checkCRC(const(void)[] data) pure nothrow @trusted @nogc
 {
@@ -94,7 +94,7 @@ bool checkCRC(const(void)[] data) pure nothrow @trusted @nogc
 
 /++ Calculate CRC16
     Params:
-    data - input data for calculation CRC16
+    data = input data for calculation CRC16
  +/
 ubyte[2] crc16(const(void)[] data) pure nothrow @trusted @nogc
 {

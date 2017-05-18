@@ -1,4 +1,4 @@
-// modbus with back end
+/// modbus with back end
 module modbus.facade;
 
 import modbus.backend;

@@ -9,7 +9,7 @@ interface Connection
 
     /++ Read data from connection
         Params:
-        buffer - allocated buffer for reading
+        buffer = allocated buffer for reading
         Returns:
         slice of buffer with readed data
      +/

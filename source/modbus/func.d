@@ -3,7 +3,7 @@ module modbus.func;
 
 /++ Set endian to native for array of values
     Params:
-    data - array of values
+    data = array of values
  +/
 auto bigEndianToNativeArr(T)(T[] data) @trusted @nogc pure nothrow
 {

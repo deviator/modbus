@@ -12,7 +12,7 @@ public import modbus.backend.specrules;
 /++ Basic functionality of Modbus.Backend
 
     Params:
-    BUFFER_SIZE - static size of message buffer
+    BUFFER_SIZE = static size of message buffer
  +/
 class BaseBackend(size_t BUFFER_SIZE) : Modbus.Backend
 {
@@ -31,10 +31,10 @@ public:
 
     /++
         Params:
-        c - connection
-        serviceData - CRC for RTU, protocol id for TCP etc
-        deviceOffset - offset of device number (address) in message
-        deviceSize - size of device number type
+        c = connection
+        serviceData = CRC for RTU, protocol id for TCP etc
+        deviceOffset = offset of device number (address) in message
+        deviceSize = size of device number type
      +/
     this(Connection c, SpecRules s, size_t serviceData, size_t deviceOffset)
     {
