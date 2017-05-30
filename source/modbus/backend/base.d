@@ -31,10 +31,10 @@ public:
 
     /++
         Params:
-        c = connection
-        serviceData = CRC for RTU, protocol id for TCP etc
-        deviceOffset = offset of device number (address) in message
-        deviceSize = size of device number type
+            c = connection
+            s = rules for pack N-byte data to sending package
+            serviceData = size of CRC for RTU, protocol id for TCP etc
+            deviceOffset = offset of device number (address) in message
      +/
     this(Connection c, SpecRules s, size_t serviceData, size_t deviceOffset)
     {
@@ -87,11 +87,12 @@ protected:
     Response baseRead(size_t expectedBytes, bool allocateOnlyExpected=false)
     {
         expectedBytes += minimumMsgLength;
+        version (modbus_verbose) .tracef("start read %d bytes", expectedBytes);
 
         auto buf = buffer[];
         if (allocateOnlyExpected) buf = buf[0..expectedBytes];
         auto tmp = cast(ubyte[])conn.read(buf);
-        version (modbus_verbose) .trace(" read bytes: ", tmp);
+        version (modbus_verbose) .trace(" readed bytes: ", tmp);
 
         if (tmp.length < devOffset+sr.deviceTypeSize+functionTypeSize)
             throw readDataLengthException(0, 0, expectedBytes, tmp.length);
