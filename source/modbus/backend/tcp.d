@@ -20,12 +20,13 @@ override:
     ///
     void start(ulong dev, ubyte func)
     {
+        short zero = 0;
         // transaction id
-        append(ushort(0));
+        append(zero);
         // protocol id
-        append(ushort(0));
+        append(zero);
         // packet length (change in send)
-        append(ushort(0));
+        append(zero);
         appendDF(dev, func);
     }
 
@@ -61,4 +62,22 @@ override:
 
         return res;
     }
+}
+
+unittest
+{
+    import std.array : appender;
+    auto buf = appender!(ubyte[]);
+    auto tcp = new TCP(new class Connection
+    {
+        override void write(const(void)[] data)
+        { buf.put(cast(const(ubyte)[])data); }
+        override void[] read(void[] buffer)
+        { return buffer[0..1]; }
+    });
+    tcp.start(1,2);
+    int xx = 123;
+    tcp.append(xx);
+    tcp.send();
+    assert (buf.data == [0,0, 0,0, 0,6, 1, 2, 0,0,0,123]);
 }
