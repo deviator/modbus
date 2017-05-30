@@ -15,6 +15,38 @@ class Modbus
 protected:
     Backend be;
 
+    int fiber_mutex;
+    static struct FSync
+    {
+        int* mutex;
+        this(Modbus m)
+        {
+            mutex = &(m.fiber_mutex);
+            if (*mutex != 0) m.yield();
+            *mutex = 1;
+        }
+
+        ~this() { *mutex = 0; }
+    }
+
+    void yield()
+    {
+        import core.thread;
+        if (yieldFunc != null) yieldFunc();
+        else if (Fiber.getThis !is null)
+            Fiber.yield();
+        else
+        {
+            // unspecific state, if vars must
+            // changes it can be not changed
+            version (modbus_verbose)
+                .warning("Thread.yield can block execution");
+            Thread.yield();
+        }
+    }
+
+    void delegate() yieldFunc;
+
 public:
 
     ///
@@ -69,25 +101,29 @@ public:
 
     invariant
     {
-        if (be !is null)
-            assert(be.messageComplite);
+        assert(be.messageComplite, "uncomplite message");
     }
 
-    ///
-    this(Backend be)
+    /++ 
+        Params:
+            be = Backend
+            yieldFunc = needs if used in fiber-based code (vibe for example)
+     +/
+    this(Backend be, void delegate() yieldFunc=null)
     {
         if (be is null)
             throw modbusException("backend is null");
         this.be = be;
+        this.yieldFunc = yieldFunc;
     }
 
-    ///
-    void write(Args...)(ulong dev, ubyte func, Args args)
+    // fiber unsafe write
+    private void fusWrite(Args...)(ulong dev, ubyte fnc, Args args)
     {
         import std.range : ElementType;
         import std.traits : isArray, isNumeric, Unqual;
 
-        be.start(dev, func);
+        be.start(dev, fnc);
 
         void _append(T)(T val)
         {
@@ -112,7 +148,33 @@ public:
         be.send();
     }
 
-    /// result in big endian
+    /++ Write to serial port
+
+        fiber-safe
+
+        Params:
+            dev = modbus device address (number)
+            fnc = function number
+            args = writed data in native endian
+     +/
+    void write(Args...)(ulong dev, ubyte fnc, Args args)
+    {
+        auto fsync = FSync(this);
+        fusWrite(dev, fnc, args);
+    }
+
+    /++ Read from serial port
+
+        not fiber-safe
+
+        Params:
+            dev = modbus device address (number)
+            fnc = function number
+            bytes = expected response length in bytes
+
+        Returns:
+            result in big endian
+     +/
     const(void)[] read(ulong dev, ubyte fnc, size_t bytes)
     {
         auto res = be.read(bytes);
@@ -134,14 +196,17 @@ public:
     /++ Write and read to modbus
 
         Params:
-        dev = slave device number
-        fnc = called function number
-        bytes = expected bytes for reading
-        args = sending data
+            dev = slave device number
+            fnc = called function number
+            bytes = expected bytes for reading
+            args = sending data
+        Returns:
+            result in big endian
      +/
     const(void)[] request(Args...)(ulong dev, ubyte fnc, size_t bytes, Args args)
     {
-        this.write(dev, fnc, args);
+        auto fsync = FSync(this);
+        this.fusWrite(dev, fnc, args);
         return read(dev, fnc, bytes);
     }
 
@@ -186,7 +251,7 @@ public:
     { request(dev, 6, 4, addr, value); }
 
     /// function number 0x10 (16)
-    void writeMultipleRegisters(ulong dev, ushort addr, ushort[] values)
+    void writeMultipleRegisters(ulong dev, ushort addr, const(ushort)[] values)
     {
         if (values.length >= 125) throw modbusException("very big count");
         request(dev, 16, 4, addr, cast(ushort)values.length,
