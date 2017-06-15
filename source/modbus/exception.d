@@ -57,7 +57,7 @@ class FunctionErrorException : ModbusDevException
         this.code = cast(FunctionErrorCode)code;
 
         super(dev, fnc, format("dev %d fnc %d(0x%x) recive fnc %d(0x%x) with exception code %s (%d)",
-        dev, fnc, fnc, res, res, code, code), file, line);
+        dev, fnc, fnc, res, res, cast(FunctionErrorCode)code, code), file, line);
     }
 }
 
