@@ -1,7 +1,7 @@
 ### Modbus protocol
 
 Library provides modbus wrapper over RTU and TCP connections.
-By default using `serialport` package.
+By default using [`serialport`](https://github.com/deviator/serialport) package.
 
 Simple usage:
 
