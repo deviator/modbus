@@ -1,3 +1,0 @@
-name "rid"
-versions "modbus_verbose"
-dependency "modbus" path="../"
