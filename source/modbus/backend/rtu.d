@@ -31,9 +31,13 @@ override:
     Response read(size_t expectedBytes)
     {
         auto res = baseRead(expectedBytes);
-        if (!checkCRC(res.data))
-            throw checkCRCException(res.dev, res.fnc);
-        res.data = res.data[devOffset+sr.deviceTypeSize+functionTypeSize..$-lengthOfCRC];
+        auto spack = devOffset+sr.deviceTypeSize+functionTypeSize;
+        // errors can have noise before crc
+        if ((cast(ubyte[])res.data)[devOffset+sr.deviceTypeSize] >= 0x80)
+            res.data = res.data[0..spack+ubyte.sizeof+lengthOfCRC];
+
+        if (!checkCRC(res.data)) throw checkCRCException(res.dev, res.fnc);
+        res.data = res.data[spack..$-lengthOfCRC];
         return res;
     }
 }
