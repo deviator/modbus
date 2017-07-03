@@ -33,6 +33,14 @@ version(Have_serialport)
                  readFrameGap = 50.msecs;
 
         ///
+        this(string dev, uint baudrate, StopBits stopbits=StopBits.one,
+             Parity parity=Parity.none, DataBits databits=DataBits.data8)
+        {
+            _com = new SerialPort(dev, SerialPort.Config(baudrate, parity, databits, stopbits));
+            super(new RTU(new C, null));
+        }
+
+        ///
         this(SerialPort sp, SpecRules sr=null)
         {
             import std.exception : enforce;
