@@ -30,7 +30,7 @@ version(Have_serialport)
         ///
         Duration writeTimeout = 100.msecs,
                  readTimeout = 1.seconds,
-                 readFrameGap = 4.msecs;
+                 readFrameGap = 50.msecs;
 
         ///
         this(SerialPort sp, SpecRules sr=null)
