@@ -18,7 +18,7 @@ public:
 override:
 
     ///
-    void start(ulong dev, ubyte func)
+    protected void startAlgo(ulong dev, ubyte func)
     {
         short zero = 0;
         // transaction id
@@ -34,7 +34,6 @@ override:
     void send()
     {
         import std.bitmanip : nativeToBigEndian;
-        scope (exit) idx = 0;
         auto dsize = cast(ushort)(idx - packedServiceData);
         enum plo = packedLengthOffset;
         buffer[plo..plo+ushort.sizeof] = nativeToBigEndian(dsize);
@@ -45,7 +44,7 @@ override:
     }
 
     ///
-    Response read(size_t expectedBytes)
+    protected Response readAlgo(size_t expectedBytes)
     {
         import std.bitmanip : bigEndianToNative;
 

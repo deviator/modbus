@@ -48,15 +48,32 @@ public:
         minimumMsgLength = serviceData + sr.deviceTypeSize + functionTypeSize;
     }
 
-    abstract override
-    {
-        void start(ulong dev, ubyte func);
-        void send();
-        Response read(size_t expectedBytes);
-    }
+    protected void preStart() { idx = 0; }
+    protected void preRead() { idx = 0; }
+
+    ///
+    abstract void startAlgo(ulong dev, ubyte func);
+    ///
+    abstract Response readAlgo(size_t expectedBytes);
 
     override
     {
+        abstract void send();
+
+        ///
+        void start(ulong dev, ubyte func)
+        {
+            preStart();
+            startAlgo(dev, func);
+        }
+
+        ///
+        Response read(size_t expectedBytes)
+        {
+            preRead();
+            return readAlgo(expectedBytes);
+        }
+
         void append(byte v) { append(sr.pack(v)); }
         void append(short v) { append(sr.pack(v)); }
         void append(int v) { append(sr.pack(v)); }
@@ -76,7 +93,6 @@ public:
                 .trace("append msg buffer data: ", buffer[0..idx]);
         }
 
-        bool messageComplite() const @property { return idx == 0; }
         const(void)[] tempBuffer() const @property { return buffer[0..idx]; }
     }
 
@@ -92,6 +108,7 @@ protected:
         auto buf = buffer[];
         if (allocateOnlyExpected) buf = buf[0..expectedBytes];
         auto tmp = cast(ubyte[])conn.read(buf);
+        idx = tmp.length;
         version (modbus_verbose) .trace(" readed bytes: ", tmp);
 
         if (tmp.length < devOffset+sr.deviceTypeSize+functionTypeSize)

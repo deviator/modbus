@@ -22,11 +22,44 @@ class ModbusDevException : ModbusException
     ///
     ubyte fnc;
     ///
-    this(ulong dev, ubyte fnc, string msg, string file=__FILE__, size_t line=__LINE__)
+    private ubyte[256] writeBuffer;
+    ///
+    private size_t writeLength;
+    ///
+    private ubyte[256] readBuffer;
+    ///
+    private size_t readLength;
+
+    ///
+    this(ulong dev, ubyte fnc, string msg,
+         string file=__FILE__, size_t line=__LINE__)
     {
         this.dev = dev;
         this.fnc = fnc;
         super(msg, file, line);
+    }
+
+    @property
+    {
+        void writed(const(void)[] b)
+        {
+            auto ln = b.length;
+            writeBuffer[0..ln] = cast(ubyte[])(b[0..ln]);
+            writeLength = ln;
+        }
+
+        const(void)[] writed() const
+        { return writeBuffer[0..writeLength]; }
+
+        void readed(const(void)[] b)
+        {
+            auto ln = b.length;
+            readBuffer[0..ln] = cast(ubyte[])(b[0..ln]);
+            readLength = ln;
+        }
+
+        const(void)[] readed() const
+        { return readBuffer[0..readLength]; }
     }
 }
 
@@ -34,7 +67,8 @@ class ModbusDevException : ModbusException
 class CheckCRCException : ModbusDevException
 {
     ///
-    this(ulong dev, ubyte fnc, string file=__FILE__, size_t line=__LINE__)
+    this(ulong dev, ubyte fnc,
+         string file=__FILE__, size_t line=__LINE__)
     {
         super(dev, fnc, format("dev %d fnc %d(0x%x) recive msg CRC check fails",
                     dev, fnc, fnc), file, line);
@@ -51,13 +85,14 @@ class FunctionErrorException : ModbusDevException
 
     ///
     this(ulong dev, ubyte fnc, ubyte res, ubyte code,
-            string file=__FILE__, size_t line=__LINE__)
+         string file=__FILE__, size_t line=__LINE__)
     {
         this.res = res;
         this.code = cast(FunctionErrorCode)code;
 
-        super(dev, fnc, format("dev %d fnc %d(0x%x) recive fnc %d(0x%x) with exception code %s (%d)",
-        dev, fnc, fnc, res, res, cast(FunctionErrorCode)code, code), file, line);
+        super(dev, fnc, format("dev %d fnc %d(0x%x) recive fnc %d(0x%x) with "~
+                                "exception code %s (%d)", dev, fnc, fnc, res, res,
+                                cast(FunctionErrorCode)code, code), file, line);
     }
 }
 
@@ -67,7 +102,7 @@ class ReadDataLengthException : ModbusDevException
     size_t expected, responseLength;
     ///
     this(ulong dev, ubyte fnc, size_t exp, size_t res,
-            string file=__FILE__, size_t line=__LINE__)
+         string file=__FILE__, size_t line=__LINE__)
     {
         expected = exp;
         responseLength = res;

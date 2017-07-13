@@ -15,12 +15,11 @@ public:
 
 override:
     ///
-    void start(ulong dev, ubyte func) { appendDF(dev, func); }
+    protected void startAlgo(ulong dev, ubyte func) { appendDF(dev, func); }
 
     ///
     void send()
     {
-        scope (exit) idx = 0;
         append(cast(const(void)[])(crc16(buffer[0..idx])[]));
         conn.write(buffer[0..idx]);
         version (modbusverbose)
@@ -28,7 +27,7 @@ override:
     }
 
     ///
-    Response read(size_t expectedBytes)
+    protected Response readAlgo(size_t expectedBytes)
     {
         auto res = baseRead(expectedBytes);
         auto spack = devOffset+sr.deviceTypeSize+functionTypeSize;
@@ -36,7 +35,9 @@ override:
         if ((cast(ubyte[])res.data)[devOffset+sr.deviceTypeSize] >= 0x80)
             res.data = res.data[0..spack+ubyte.sizeof+lengthOfCRC];
 
-        if (!checkCRC(res.data)) throw checkCRCException(res.dev, res.fnc);
+        if (!checkCRC(res.data))
+            throw checkCRCException(res.dev, res.fnc);
+
         res.data = res.data[spack..$-lengthOfCRC];
         return res;
     }
@@ -65,11 +66,9 @@ unittest
     rtu.start(1, 6);
     rtu.append(C1);
     rtu.append(C2);
-    assert(!rtu.messageComplite);
     assert(rtu.tempBuffer.length == 2 + 2 + 2);
     rtu.send();
-    assert(rtu.messageComplite);
-    assert(rtu.tempBuffer.length == 0);
+    assert(rtu.tempBuffer.length == 2 + 2 + 2 + 2);
     assert(equal(cast(ubyte[])buf[0..$-2],
                 cast(ubyte[])[1, 6] ~ nativeToBigEndian(C1) ~ nativeToBigEndian(C2)));
 

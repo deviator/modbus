@@ -9,6 +9,8 @@ public import modbus.exception;
 
 import modbus.func;
 
+package enum MAX_WRITE_BUFFER = 260;
+
 ///
 class Modbus
 {
@@ -70,13 +72,10 @@ public:
         /// ditto
         void append(const(void)[]);
 
-        ///
-        bool messageComplite() const @property;
-
         /// temp message buffer
         const(void)[] tempBuffer() const @property;
 
-        /// send and clear temp message
+        /// send data
         void send();
 
         /// Readed modbus response
@@ -113,13 +112,10 @@ public:
     }
 
     // fiber unsafe write
-    private void fusWrite(Args...)(ulong dev, ubyte fnc, Args args)
+    private const(void)[] fusWrite(Args...)(ulong dev, ubyte fnc, Args args)
     {
         import std.range : ElementType;
         import std.traits : isArray, isNumeric, Unqual;
-        import std.exception : enforce;
-
-        enforce(be.messageComplite, "uncomplite meassage");
 
         be.start(dev, fnc);
 
@@ -144,6 +140,8 @@ public:
         foreach (arg; args) _append(arg);
 
         be.send();
+
+        return be.tempBuffer;
     }
 
     /++ Write to serial port
@@ -161,6 +159,7 @@ public:
         fusWrite(dev, fnc, args);
     }
 
+    ///
     void flush()
     {
         import serialport;
@@ -178,23 +177,28 @@ public:
     // fiber unsafe read
     private const(void)[] fusRead(ulong dev, ubyte fnc, size_t bytes)
     {
-        import std.exception : enforce;
-        enforce(be.messageComplite, "uncomplite meassage");
+        try
+        {
+            auto res = be.read(bytes);
 
-        auto res = be.read(bytes);
+            version (modbus_verbose)
+                if (res.dev != dev)
+                    .warningf("receive from unexpected device %d (expect %d)",
+                                    res.dev, dev);
+            
+            if (res.fnc != fnc)
+                throw functionErrorException(dev, fnc, res.fnc, (cast(ubyte[])res.data)[0]);
 
-        version (modbus_verbose)
-            if (res.dev != dev)
-                .warningf("receive from unexpected device %d (expect %d)",
-                                res.dev, dev);
-        
-        if (res.fnc != fnc)
-            throw functionErrorException(dev, fnc, res.fnc, (cast(ubyte[])res.data)[0]);
+            if (res.data.length != bytes)
+                throw  readDataLengthException(dev, fnc, bytes, res.data.length);
 
-        if (res.data.length != bytes)
-            throw readDataLengthException(dev, fnc, bytes, res.data.length);
-
-        return res.data;
+            return res.data;
+        }
+        catch (ModbusDevException e)
+        {
+            e.readed = be.tempBuffer;
+            throw e;
+        }
     }
 
     /++ Read from serial port
@@ -218,8 +222,16 @@ public:
     // fiber unsafe request
     private const(void)[] fusRequest(Args...)(ulong dev, ubyte fnc, size_t bytes, Args args)
     {
-        fusWrite(dev, fnc, args);
-        return fusRead(dev, fnc, bytes);
+        auto tmp = fusWrite(dev, fnc, args);
+        void[MAX_WRITE_BUFFER] writed = void;
+        writed[0..tmp.length] = tmp[];
+
+        try return fusRead(dev, fnc, bytes);
+        catch (ModbusDevException e)
+        {
+            e.writed = writed[0..tmp.length];
+            throw e;
+        }
     }
 
     /++ Write and read to modbus
