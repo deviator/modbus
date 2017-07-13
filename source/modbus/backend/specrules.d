@@ -78,9 +78,29 @@ private:
     const(void)[] tpack(T)(T v)
     {
         import std.bitmanip : write;
-        buffer[].write(v, 0);
+
+        static if (T.sizeof <= ushort.sizeof)
+            buffer[].write(v, 0);
+        else
+        {
+            size_t i;
+            foreach (part; cast(ushort[])(cast(void[])[v]))
+                buffer[].write(part, &i);
+        }
+
         return buffer[0..T.sizeof];
     }
+}
+
+unittest
+{
+    auto bsp = new BasicSpecRules;
+    assert(cast(ubyte[])bsp.pack(cast(ubyte)(0xAB)) == [0xAB]);
+    assert(cast(ubyte[])bsp.pack(cast(ushort)(0xA1B2)) == [0xA1, 0xB2]);
+    assert(cast(ubyte[])bsp.pack(cast(int)(0xA1B2C3D4)) ==
+            [0xC3, 0xD4, 0xA1, 0xB2]);
+    assert(cast(ubyte[])bsp.pack(0xA1B2C3D4E5F6A7B8) ==
+            [0xA7, 0xB8, 0xE5, 0xF6, 0xC3, 0xD4, 0xA1, 0xB2]);
 }
 
 ///

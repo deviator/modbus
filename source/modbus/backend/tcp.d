@@ -79,5 +79,5 @@ unittest
     int xx = 123;
     tcp.append(xx);
     tcp.send();
-    assert (buf.data == [0,0, 0,0, 0,6, 1, 2, 0,0,0,123]);
+    assert (buf.data == [0,0, 0,0, 0,6, 1, 2, 0,123,0,0]);
 }
