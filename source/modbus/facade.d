@@ -41,6 +41,14 @@ version(Have_serialport)
         }
 
         ///
+        this(string dev, SerialPort.Config cfg, void delegate(Duration) sf,
+                void delegate() yf, SpecRules sr=null)
+        {
+            _com = new SerialPort(dev, cfg, sf);
+            super(new RTU(new C, sr), yf);
+        }
+
+        ///
         this(SerialPort sp, SpecRules sr=null)
         {
             import std.exception : enforce;
@@ -55,6 +63,11 @@ version(Have_serialport)
             ///
             const(SerialPort) com() const { return _com; }
         }
+
+        ///
+        auto setSleepFunc(void delegate(Duration) f) { _com.sleepFunc = f; return this; }
+        ///
+        auto setYieldFunc(void delegate() f) { yieldFunc = f; return this; }
 
         ~this() { _com.destroy(); }
     }
