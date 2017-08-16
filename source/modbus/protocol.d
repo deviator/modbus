@@ -130,8 +130,7 @@ public:
             else
             {
                 static if (is(T == struct))
-                    foreach (name; __traits(allMembers, T))
-                        _append(__traits(getMember, val, name));
+                    foreach (v; val.tupleof) _append(v);
                 else static if (isNumeric!T) be.append(val);
                 else static assert(0, "unsupported type " ~ T.stringof);
             }
