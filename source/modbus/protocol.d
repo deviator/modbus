@@ -24,7 +24,7 @@ protected:
         this(Modbus m)
         {
             mutex = &(m.fiber_mutex);
-            if (*mutex != 0) m.yield();
+            while (*mutex != 0) m.yield();
             *mutex = 1;
         }
 
