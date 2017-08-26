@@ -3,7 +3,7 @@ module modbus.protocol;
 
 import std.bitmanip : BitArray;
 version (modbus_verbose)
-    import std.experimental.logger;
+    public import std.experimental.logger;
 
 public import modbus.exception;
 
@@ -17,37 +17,6 @@ class Modbus
 protected:
     Backend be;
 
-    int fiber_mutex;
-    static struct FSync
-    {
-        int* mutex;
-        this(Modbus m)
-        {
-            mutex = &(m.fiber_mutex);
-            while (*mutex != 0) m.yield();
-            *mutex = 1;
-        }
-
-        ~this() { *mutex = 0; }
-    }
-
-    void yield()
-    {
-        import core.thread;
-        if (yieldFunc != null) yieldFunc();
-        else if (Fiber.getThis !is null)
-            Fiber.yield();
-        else
-        {
-            // unspecific state, if vars must
-            // changes it can be not changed
-            version (modbus_verbose)
-                .warning("Thread.yield can block execution");
-            Thread.yield();
-        }
-    }
-
-    void delegate() yieldFunc;
 
 public:
 
@@ -101,18 +70,22 @@ public:
     /++ 
         Params:
             be = Backend
-            yieldFunc = needs if used in fiber-based code (vibe for example)
      +/
-    this(Backend be, void delegate() yieldFunc=null)
+    this(Backend be)
     {
         if (be is null)
             throw modbusException("backend is null");
         this.be = be;
-        this.yieldFunc = yieldFunc;
     }
 
-    // fiber unsafe write
-    private const(void)[] fusWrite(Args...)(ulong dev, ubyte fnc, Args args)
+    /++ Write to serial port
+
+        Params:
+            dev = modbus device address (number)
+            fnc = function number
+            args = writed data in native endian
+     +/
+    const(void)[] write(Args...)(ulong dev, ubyte fnc, Args args)
     {
         import std.range : ElementType;
         import std.traits : isArray, isNumeric, Unqual;
@@ -143,38 +116,17 @@ public:
         return be.tempBuffer;
     }
 
-    /++ Write to serial port
-
-        fiber-safe
+    /++ Read from serial port
 
         Params:
             dev = modbus device address (number)
             fnc = function number
-            args = writed data in native endian
+            bytes = expected response length in bytes
+
+        Returns:
+            result in big endian
      +/
-    void write(Args...)(ulong dev, ubyte fnc, Args args)
-    {
-        auto fsync = FSync(this);
-        fusWrite(dev, fnc, args);
-    }
-
-    ///
-    void flush()
-    {
-        import serialport;
-        try
-        {
-            auto res = be.read(240);
-            version (modbus_verbose)
-                .info("flush ", cast(ubyte[])(res.data));
-        }
-        catch (TimeoutException e)
-            version (modbus_verbose)
-                .trace("flust timeout");
-    }
-
-    // fiber unsafe read
-    private const(void)[] fusRead(ulong dev, ubyte fnc, size_t bytes)
+    const(void)[] read(ulong dev, ubyte fnc, size_t bytes)
     {
         try
         {
@@ -200,42 +152,7 @@ public:
         }
     }
 
-    /++ Read from serial port
-
-        fiber-safe
-
-        Params:
-            dev = modbus device address (number)
-            fnc = function number
-            bytes = expected response length in bytes
-
-        Returns:
-            result in big endian
-     +/
-    const(void)[] read(ulong dev, ubyte fnc, size_t bytes)
-    {
-        auto fsync = FSync(this);
-        return fusRead(dev, fnc, bytes);
-    }
-
-    // fiber unsafe request
-    private const(void)[] fusRequest(Args...)(ulong dev, ubyte fnc, size_t bytes, Args args)
-    {
-        auto tmp = fusWrite(dev, fnc, args);
-        void[MAX_WRITE_BUFFER] writed = void;
-        writed[0..tmp.length] = tmp[];
-
-        try return fusRead(dev, fnc, bytes);
-        catch (ModbusDevException e)
-        {
-            e.writed = writed[0..tmp.length];
-            throw e;
-        }
-    }
-
     /++ Write and read to modbus
-
-        fiber-safe
 
         Params:
             dev = slave device number
@@ -247,25 +164,33 @@ public:
      +/
     const(void)[] request(Args...)(ulong dev, ubyte fnc, size_t bytes, Args args)
     {
-        auto fsync = FSync(this);
-        return fusRequest(dev, fnc, bytes, args);
+        auto tmp = write(dev, fnc, args);
+        void[MAX_WRITE_BUFFER] writed = void;
+        writed[0..tmp.length] = tmp[];
+
+        try return read(dev, fnc, bytes);
+        catch (ModbusDevException e)
+        {
+            e.writed = writed[0..tmp.length];
+            throw e;
+        }
     }
 
     /// function number 0x1 (1)
     const(BitArray) readCoils(ulong dev, ushort start, ushort cnt)
     {
         if (cnt >= 2000) throw modbusException("very big count");
-        auto fsync = FSync(this);
-        return const(BitArray)(cast(void[])fusRequest(dev, 1, 1+(cnt+7)/8, start, cnt)[1..$], cnt);
+        return const(BitArray)(cast(void[])request(dev, 1, 1+(cnt+7)/8, start, cnt)[1..$], cnt);
     }
 
     /// function number 0x2 (2)
     const(BitArray) readDiscreteInputs(ulong dev, ushort start, ushort cnt)
     {
         if (cnt >= 2000) throw modbusException("very big count");
-        auto fsync = FSync(this);
-        return const(BitArray)(cast(void[])fusRequest(dev, 2, 1+(cnt+7)/8, start, cnt)[1..$], cnt);
+        return const(BitArray)(cast(void[])request(dev, 2, 1+(cnt+7)/8, start, cnt)[1..$], cnt);
     }
+
+    private alias be2na = bigEndianToNativeArr;
 
     /++ function number 0x3 (3)
         Returns: data in native endian
@@ -273,8 +198,7 @@ public:
     const(ushort)[] readHoldingRegisters(ulong dev, ushort start, ushort cnt)
     {
         if (cnt >= 125) throw modbusException("very big count");
-        auto fsync = FSync(this);
-        return bigEndianToNativeArr(cast(ushort[])fusRequest(dev, 3, 1+cnt*2, start, cnt)[1..$]);
+        return be2na(cast(ushort[])request(dev, 3, 1+cnt*2, start, cnt)[1..$]);
     }
 
     /++ function number 0x4 (4)
@@ -283,8 +207,7 @@ public:
     const(ushort)[] readInputRegisters(ulong dev, ushort start, ushort cnt)
     {
         if (cnt >= 125) throw modbusException("very big count");
-        auto fsync = FSync(this);
-        return bigEndianToNativeArr(cast(ushort[])fusRequest(dev, 4, 1+cnt*2, start, cnt)[1..$]);
+        return be2na(cast(ushort[])request(dev, 4, 1+cnt*2, start, cnt)[1..$]);
     }
 
     /// function number 0x5 (5)

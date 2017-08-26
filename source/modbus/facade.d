@@ -41,11 +41,10 @@ version(Have_serialport)
         }
 
         ///
-        this(string dev, SerialPort.Config cfg, void delegate(Duration) sf,
-                void delegate() yf, SpecRules sr=null)
+        this(string dev, SerialPort.Config cfg, void delegate(Duration) sf, SpecRules sr=null)
         {
             _com = new SerialPort(dev, cfg, sf);
-            super(new RTU(new C, sr), yf);
+            super(new RTU(new C, sr));
         }
 
         ///
@@ -54,6 +53,20 @@ version(Have_serialport)
             import std.exception : enforce;
             _com = enforce(sp, "serial port is null");
             super(new RTU(new C, sr));
+        }
+
+        ///
+        void flush()
+        {
+            try
+            {
+                auto res = be.read(240);
+                version (modbus_verbose)
+                    .info("flush ", cast(ubyte[])(res.data));
+            }
+            catch (TimeoutException e)
+                version (modbus_verbose)
+                    .trace("flust timeout");
         }
 
         @property
@@ -66,8 +79,6 @@ version(Have_serialport)
 
         ///
         auto setSleepFunc(void delegate(Duration) f) { _com.sleepFunc = f; return this; }
-        ///
-        auto setYieldFunc(void delegate() f) { yieldFunc = f; return this; }
 
         ~this() { _com.destroy(); }
     }
@@ -83,8 +94,22 @@ class ModbusTCP : Modbus
 protected:
     TcpSocket _socket;
 
+    void yield()
+    {
+        import core.thread;
+        if (yieldFunc !is null) yieldFunc();
+        else if (Fiber.getThis !is null) Fiber.yield();
+        else
+        {
+            // unspecific state, if vars must
+            // changes it can be not changed
+            version (modbus_verbose)
+                .warning("unspecific state: Thread.yield can block execution");
+            Thread.yield();
+        }
+    }
+
     void delegate() yieldFunc;
-    private void yield() { if (yieldFunc !is null) yieldFunc(); }
 
     class C : Connection
     {
