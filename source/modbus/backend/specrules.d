@@ -7,7 +7,7 @@ version (modbus_verbose)
 ///
 interface SpecRules
 {
-pure:
+pure @nogc:
     ///
     @property size_t deviceTypeSize();
 
@@ -33,49 +33,9 @@ pure:
 ///
 class BasicSpecRules : SpecRules
 {
-protected:
-    ubyte[16] buffer;
+    protected ubyte[16] buffer;
 
-public:
-
-pure:
-
-    override
-    {
-        @property size_t deviceTypeSize() { return 1; }
-
-        const(void)[] packDF(ulong dev, ubyte fnc) 
-        {
-            import std.bitmanip : write;
-            assert(dev <= 255, "device number can't be more 255");
-            buffer[].write(cast(ubyte)dev, 0);
-            buffer[].write(fnc, 1);
-            return buffer[0..2];
-        }
-
-        void peekDF(const(void)[] vbuf, ref ulong dev, ref ubyte fnc)
-        {
-            import std.bitmanip : peek;
-            auto buf = cast(const(ubyte)[])vbuf;
-            if (buf.length >= 1) dev = buf.peek!ubyte(0);
-            else version (modbus_verbose) debug
-                .error("short readed message: can't read device number");
-            if (buf.length >= 2) fnc = buf.peek!ubyte(1);
-            else version (modbus_verbose) debug
-                .error("short readed message: can't read function number");
-        }
-
-        const(void)[] pack(byte v) { return tpack(v); }
-        const(void)[] pack(short v) { return tpack(v); }
-        const(void)[] pack(int v) { return tpack(v); }
-        const(void)[] pack(long v) { return tpack(v); }
-        const(void)[] pack(float v) { return tpack(v); }
-        const(void)[] pack(double v) { return tpack(v); }
-    }
-
-private:
-
-    const(void)[] tpack(T)(T v)
+    private const(void)[] tpack(T)(T v) @nogc
     {
         import std.bitmanip : write;
 
@@ -84,12 +44,44 @@ private:
         else
         {
             size_t i;
-            foreach (part; cast(ushort[])(cast(void[])[v]))
+            foreach (part; cast(ushort[])((cast(void[T.sizeof])(cast(T[1])[v]))[]))
                 buffer[].write(part, &i);
         }
 
         return buffer[0..T.sizeof];
     }
+
+public pure override @nogc:
+    @property size_t deviceTypeSize() { return 1; }
+
+    const(void)[] packDF(ulong dev, ubyte fnc) 
+    {
+        import std.bitmanip : write;
+        assert(dev <= 255, "device number can't be more 255");
+        buffer[].write(cast(ubyte)dev, 0);
+        buffer[].write(fnc, 1);
+        return buffer[0..2];
+    }
+
+    void peekDF(const(void)[] vbuf, ref ulong dev, ref ubyte fnc)
+    {
+        import std.bitmanip : peek;
+        auto buf = cast(const(ubyte)[])vbuf;
+        if (buf.length >= 1) dev = buf.peek!ubyte(0);
+        else version (modbus_verbose) debug
+            .error("short readed message: can't read device number");
+        if (buf.length >= 2) fnc = buf.peek!ubyte(1);
+        else version (modbus_verbose) debug
+            .error("short readed message: can't read function number");
+    }
+
+    const(void)[] pack(byte v) { return tpack(v); }
+    const(void)[] pack(short v) { return tpack(v); }
+    const(void)[] pack(int v) { return tpack(v); }
+    const(void)[] pack(long v) { return tpack(v); }
+    const(void)[] pack(float v) { return tpack(v); }
+    const(void)[] pack(double v) { return tpack(v); }
+
 }
 
 unittest
@@ -106,7 +98,7 @@ unittest
 ///
 class PilotBMSSpecRules : BasicSpecRules
 {
-public pure override:
+public pure override @nogc:
     @property size_t deviceTypeSize() { return 4; }
 
     const(void)[] packDF(ulong dev, ubyte fnc) 
