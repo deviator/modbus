@@ -17,7 +17,6 @@ class Modbus
 protected:
     Backend be;
 
-
 public:
 
     ///
@@ -141,7 +140,7 @@ public:
                 throw functionErrorException(dev, fnc, res.fnc, (cast(ubyte[])res.data)[0]);
 
             if (res.data.length != bytes)
-                throw  readDataLengthException(dev, fnc, bytes, res.data.length);
+                throw readDataLengthException(dev, fnc, bytes, res.data.length);
 
             return res.data;
         }
