@@ -2,80 +2,64 @@
 module modbus.protocol;
 
 import std.bitmanip : BitArray;
+import std.exception : enforce;
+import std.datetime;
+import std.conv : to;
+
 version (modbus_verbose)
     public import std.experimental.logger;
 
-public import modbus.exception;
-
+import modbus.exception;
+import modbus.connection;
+import modbus.backend;
+import modbus.types;
 import modbus.func;
 
-package enum MAX_WRITE_BUFFER = 260;
+package enum MAX_BUFFER = 260;
 
 ///
 class Modbus
 {
 protected:
+    void[MAX_BUFFER] buffer;
+
+    Connection con;
     Backend be;
+
+    void delegate(Duration) sleepFunc;
+
+    void sleep(Duration dur)
+    {
+        import core.thread;
+
+        if (sleepFunc !is null) sleepFunc(dur);
+        else
+        {
+            if (auto fiber = Fiber.getThis)
+            {
+                auto dt = StopWatch(AutoStart.yes);
+                while (dt.peek.to!Duration < dur)
+                    fiber.yield();
+            }
+            else Thread.sleep(dur);
+        }
+    }
 
 public:
 
     ///
-    static interface Backend
+    this(Connection con, Backend be, void delegate(Duration) sf=null)
     {
-        /// start building message
-        void start(ulong dev, ubyte func);
-
-        /// append data to message buffer
-        void append(byte);
-        /// ditto
-        void append(short);
-        /// ditto
-        void append(int);
-        /// ditto
-        void append(long);
-        /// ditto
-        void append(float);
-        /// ditto
-        void append(double);
-        /// ditto
-        void append(const(void)[]);
-
-        /// temp message buffer
-        const(void)[] tempBuffer() const @property;
-
-        /// send data
-        void send();
-
-        /// Readed modbus response
-        static struct Response
-        {
-            /// device number
-            ulong dev;
-            /// function number
-            ubyte fnc;
-
-            /// data without any changes
-            const(void)[] data;
-        }
-
-        /++ Read data to temp message buffer
-            Params:
-            expectedBytes = count of bytes in data section of message,
-                            exclude device address, function number, CRC and etc
-         +/
-        Response read(size_t expectedBytes);
+        this.con = enforce(con, modbusException("connection is null"));
+        this.be = enforce(be, modbusException("backend is null"));
+        this.sleepFunc = sf;
     }
 
-    /++ 
-        Params:
-            be = Backend
-     +/
-    this(Backend be)
-    {
-        if (be is null)
-            throw modbusException("backend is null");
-        this.be = be;
-    }
+    ///
+    Duration writeTimeout=10.msecs;
+
+    ///
+    Duration writeStepPause = (cast(ulong)(1e7 * 10 / 9600.0)).hnsecs;
 
     /++ Write to serial port
 
@@ -86,34 +70,36 @@ public:
      +/
     const(void)[] write(Args...)(ulong dev, ubyte fnc, Args args)
     {
-        import std.range : ElementType;
-        import std.traits : isArray, isNumeric, Unqual;
+        auto buf = be.buildMessage(buffer, dev, fnc, args);
 
-        be.start(dev, fnc);
+        size_t cnt = con.write(buf);
+        if (cnt == buf.length) return buf;
 
-        void _append(T)(T val)
+        auto dt = StopWatch(AutoStart.yes);
+        while (cnt != buf.length)
         {
-            static if (isArray!T)
-            {
-                static if (is(Unqual!(ElementType!T) == void))
-                    be.append(val);
-                else foreach (e; val) _append(e);
-            }
-            else
-            {
-                static if (is(T == struct))
-                    foreach (v; val.tupleof) _append(v);
-                else static if (isNumeric!T) be.append(val);
-                else static assert(0, "unsupported type " ~ T.stringof);
-            }
+            cnt += con.write(buf[cnt..$]);
+            this.sleep(writeStepPause);
+            if (dt.peek.to!Duration > writeTimeout)
+                throw modbusTimeoutException("write", dev, fnc, writeTimeout);
         }
 
-        foreach (arg; args) _append(arg);
-
-        be.send();
-
-        return be.tempBuffer;
+        return buf;
     }
+}
+
+///
+class ModbusMaster : Modbus
+{
+    ///
+    this(Connection con, Backend be, void delegate(Duration) sf=null)
+    { super(con, be, sf); }
+
+    /// time for waiting message
+    Duration readTimeout=1.seconds;
+
+    ///
+    Duration readStepPause = (cast(ulong)(1e7 * 10 / 9600.0)).hnsecs;
 
     /++ Read from serial port
 
@@ -127,26 +113,53 @@ public:
      +/
     const(void)[] read(ulong dev, ubyte fnc, size_t bytes)
     {
+        size_t mustRead = bytes + be.notMessageDataLength;
+        size_t cnt = 0;
+        Message msg;
         try
         {
-            auto res = be.read(bytes);
+            auto step = be.minMsgLength;
+            import std.stdio;
+            auto dt = StopWatch(AutoStart.yes);
+            import std.stdio;
+            RL: while (cnt < mustRead)
+            {
+                auto tmp = con.read(buffer[cnt..cnt+step]);
+                cnt += tmp.length;
+                step = 1;
+                auto res = be.parseMessage(buffer[0..cnt], msg);
+                with (Backend.ParseResult) FS: final switch(res)
+                {
+                    case success:
+                        if (cnt == mustRead) break RL;
+                        else throw readDataLengthException(dev, fnc, bytes, cnt);
+                    case errorMsg: break RL;
+                    case uncomplete: break FS;
+                    case checkFail:
+                        if (cnt == mustRead) throw checkFailException(dev, fnc);
+                        else break FS;
+                }
+                this.sleep(readStepPause);
+                if (dt.peek.to!Duration > readTimeout)
+                    throw modbusTimeoutException("read", dev, fnc, readTimeout);
+            }
 
             version (modbus_verbose)
                 if (res.dev != dev)
                     .warningf("receive from unexpected device %d (expect %d)",
                                     res.dev, dev);
             
-            if (res.fnc != fnc)
-                throw functionErrorException(dev, fnc, res.fnc, (cast(ubyte[])res.data)[0]);
+            if (msg.fnc != fnc)
+                throw functionErrorException(dev, fnc, msg.fnc, (cast(ubyte[])msg.data)[0]);
 
-            if (res.data.length != bytes)
-                throw readDataLengthException(dev, fnc, bytes, res.data.length);
+            if (msg.data.length != bytes)
+                throw readDataLengthException(dev, fnc, bytes, msg.data.length);
 
-            return res.data;
+            return msg.data;
         }
         catch (ModbusDevException e)
         {
-            e.readed = be.tempBuffer;
+            e.readed = buffer[0..cnt];
             throw e;
         }
     }
@@ -164,7 +177,7 @@ public:
     const(void)[] request(Args...)(ulong dev, ubyte fnc, size_t bytes, Args args)
     {
         auto tmp = write(dev, fnc, args);
-        void[MAX_WRITE_BUFFER] writed = void;
+        void[MAX_BUFFER] writed = void;
         writed[0..tmp.length] = tmp[];
 
         try return read(dev, fnc, bytes);
@@ -223,5 +236,41 @@ public:
         if (values.length >= 125) throw modbusException("very big count");
         request(dev, 16, 4, addr, cast(ushort)values.length,
                     cast(byte)(values.length*2), values);
+    }
+}
+
+///
+class ModbusSlave : Modbus
+{
+protected:
+    ulong dev;
+
+public:
+    ///
+    this(ulong dev, Connection con, Backend be, void delegate(Duration) sf=null)
+    {
+        super(con, be, sf);
+        this.dev = dev;
+    }
+
+    void onMessage(Message msg)
+    {
+
+    }
+
+    ///
+    void iterate()
+    {
+        Message res;
+
+        if (res.dev == 0) // broadcast
+        {
+
+        }
+        else if (res.dev != dev) return; // not for this device
+        else
+        {
+
+        }
     }
 }

@@ -1,82 +1,58 @@
 ///
 module modbus.backend.tcp;
 
+import std.bitmanip;
+
 import modbus.backend.base;
 
 ///
-class TCP : BaseBackend!260
+class TCP : BaseBackend
 {
 protected:
     // transaction id size + protocol id size + packet length size
-    enum packedServiceData = ushort.sizeof * 3;
-    enum packedLengthOffset = ushort.sizeof * 2;
+    enum packetServiceData = ushort.sizeof * 3;
+    enum packetLengthOffset = ushort.sizeof * 2;
 public:
     ///
-    this(Connection c, SpecRules s=null)
-    { super(c, s, packedServiceData, packedServiceData); }
+    this(SpecRules s=null)
+    { super(s, packetServiceData, packetServiceData); }
 
-override:
-
-    ///
-    protected void startAlgo(ulong dev, ubyte func)
+protected override:
+    void startMessage(void[] buf, ref size_t idx, ulong dev, ubyte fnc)
     {
-        short zero = 0;
+        const ushort zero;
         // transaction id
-        append(zero);
+        append(buf, idx, zero);
         // protocol id
-        append(zero);
-        // packet length (change in send)
-        append(zero);
-        appendDF(dev, func);
+        append(buf, idx, zero);
+        // packet length (change in completeMessage)
+        append(buf, idx, zero);
+        appendDF(buf, idx, dev, fnc);
     }
 
-    ///
-    void send()
+    void completeMessage(void[] buf, ref size_t idx)
     {
-        import std.bitmanip : nativeToBigEndian;
-        auto dsize = cast(ushort)(idx - packedServiceData);
-        enum plo = packedLengthOffset;
-        buffer[plo..plo+ushort.sizeof] = nativeToBigEndian(dsize);
-        conn.write(buffer[0..idx]);
-
-        version (modbus_verbose)
-            .trace("write bytes: ", buffer[0..idx]);
+        auto dsize = cast(ushort)(idx - packetServiceData);
+        size_t plo = packetLengthOffset;
+        append(buf, plo, dsize);
     }
 
-    ///
-    protected Response readAlgo(size_t expectedBytes)
+    bool check(const(void)[] data)
     {
-        import std.bitmanip : bigEndianToNative;
-
-        auto res = baseRead(expectedBytes, true);
-        auto tmp = cast(ubyte[])res.data;
-
-        auto plen = bigEndianToNative!ushort(cast(ubyte[2])tmp[4..6]);
-
-        if (tmp.length != plen+packedServiceData)
-            throw readDataLengthException(res.dev, res.fnc,
-                            plen+packedServiceData, tmp.length);
-
-        res.data = tmp[devOffset+sr.deviceTypeSize+functionTypeSize..$];
-
-        return res;
+        enum plo = packetLengthOffset;
+        auto lenbytes = cast(ubyte[2])data[plo..plo+ushort.sizeof];
+        auto len = bigEndianToNative!ushort(lenbytes);
+        return len == (data.length - packetServiceData);
     }
+    size_t endDataSplit() @property { return 0; }
 }
 
 unittest
 {
     import std.array : appender;
-    auto buf = appender!(ubyte[]);
-    auto tcp = new TCP(new class Connection
-    {
-        override void write(const(void)[] data)
-        { buf.put(cast(const(ubyte)[])data); }
-        override void[] read(void[] buffer)
-        { return buffer[0..1]; }
-    });
-    tcp.start(1,2);
+    void[100] data = void;
+    auto tcp = new TCP();
     int xx = 123;
-    tcp.append(xx);
-    tcp.send();
-    assert (buf.data == [0,0, 0,0, 0,6, 1, 2, 0,123,0,0]);
+    auto res = cast(ubyte[])tcp.buildMessage(data, 1, 2, xx);
+    assert (res == [0,0, 0,0, 0,6, 1, 2, 0,123,0,0]);
 }

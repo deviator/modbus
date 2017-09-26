@@ -2,6 +2,7 @@
 module modbus.exception;
 
 import std.string : format;
+import std.datetime : Duration;
 
 enum MINIMUM_MODBUS_MSG_LENGTH = 5;
 
@@ -15,12 +16,41 @@ class ModbusException : Exception
 }
 
 ///
-class ModbusDevException : ModbusException
+class ModbusIOException : ModbusException
 {
     ///
     ulong dev;
     ///
     ubyte fnc;
+
+    this(string msg, ulong dev, ubyte fnc,
+            string file=__FILE__, size_t line=__LINE__)
+        @nogc @safe pure nothrow
+    {
+        super(msg, file, line);
+        this.dev = dev;
+        this.fnc = fnc;
+    }
+}
+
+///
+class ModbusTimeoutException : ModbusIOException
+{
+    ///
+    Duration dur;
+    ///
+    this(string msg, ulong dev, ubyte fnc, Duration dur,
+            string file=__FILE__, size_t line=__LINE__)
+        @nogc @safe pure nothrow
+    {
+        super(msg, dev, fnc, file, line);
+        this.dur = dur;
+    }
+}
+
+///
+class ModbusDevException : ModbusIOException
+{
     ///
     private ubyte[256] writeBuffer;
     ///
@@ -33,11 +63,7 @@ class ModbusDevException : ModbusException
     ///
     this(ulong dev, ubyte fnc, string msg,
          string file=__FILE__, size_t line=__LINE__)
-    {
-        this.dev = dev;
-        this.fnc = fnc;
-        super(msg, file, line);
-    }
+    { super(msg, dev, fnc, file, line); }
 
     @property
     {
@@ -64,7 +90,7 @@ class ModbusDevException : ModbusException
 }
 
 ///
-class CheckCRCException : ModbusDevException
+class CheckFailException : ModbusDevException
 {
     ///
     this(ulong dev, ubyte fnc,
@@ -131,7 +157,8 @@ private version (modbus_use_prealloc_exceptions)
     __gshared
     {
         auto preallocModbusException = new ModbusException("many args");
-        auto preallocCheckCRCException = new CheckCRCException(0, 0);
+        auto preallocModbusTimeoutException = new ModbusTimeoutException("many args", Duration.init);
+        auto preallocCheckFailException = new CheckFailException(0, 0);
         auto preallocReadDataLengthException = new ReadDataLengthException(0,0,0,0);
         auto preallocFunctionErrorException = new FunctionErrorException(0,0,0,0);
     }
@@ -151,19 +178,35 @@ ModbusException modbusException()(string msg, string file=__FILE__, size_t line=
 }
 
 /// Returns: preallocated exception with new values of fields
-CheckCRCException checkCRCException()(ulong dev, ubyte fnc,
+ModbusTimeoutException modbusTimeoutException()(string msg, ulong dev, ubyte fnc, Duration dur, string file=__FILE__, size_t line=__LINE__)
+{
+    version (modbus_use_prealloc_exceptions)
+    {
+        preallocModbusTimeoutException.msg = msg;
+        preallocModbusTimeoutException.dev = dev;
+        preallocModbusTimeoutException.fnc = fnc;
+        preallocModbusTimeoutException.dur = dur;
+        preallocModbusTimeoutException.file = file;
+        preallocModbusTimeoutException.line = line;
+        return preallocModbusTimeoutException;
+    }
+    else return new ModbusTimeoutException(msg, dev, fnc, dur, file, line);
+}
+
+/// Returns: preallocated exception with new values of fields
+CheckFailException checkFailException()(ulong dev, ubyte fnc,
                                     string file=__FILE__, size_t line=__LINE__)
 {
     version (modbus_use_prealloc_exceptions)
     {
-        preallocCheckCRCException.msg = "check CRC fails";
-        preallocCheckCRCException.dev = dev;
-        preallocCheckCRCException.fnc = fnc;
-        preallocCheckCRCException.file = file;
-        preallocCheckCRCException.line = line;
-        return preallocCheckCRCException;
+        preallocCheckFailException.msg = "check CRC fails";
+        preallocCheckFailException.dev = dev;
+        preallocCheckFailException.fnc = fnc;
+        preallocCheckFailException.file = file;
+        preallocCheckFailException.line = line;
+        return preallocCheckFailException;
     }
-    else return new CheckCRCException(dev, fnc, file, line);
+    else return new CheckFailException(dev, fnc, file, line);
 }
 
 /// Returns: preallocated exception with new values of fields

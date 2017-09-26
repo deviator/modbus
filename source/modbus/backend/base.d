@@ -4,26 +4,95 @@ module modbus.backend.base;
 version (modbus_verbose)
     public import std.experimental.logger;
 
-import modbus.protocol;
+import std.traits;
+
+import modbus.types;
 public import modbus.exception;
-public import modbus.backend.connection;
+public import modbus.connection;
 public import modbus.backend.specrules;
 
-/++ Basic functionality of Modbus.Backend
+/// Message builder and parser
+interface Backend
+{
+    /++ work on preallocated buffer
+        Returns:
+            slice of preallocated buffer
+     +/
+    final void[] buildMessage(Args...)(void[] buffer, ulong dev, ubyte fnc, Args args)
+    {
+        size_t idx = 0;
+        startMessage(buffer, idx, dev, fnc);
+        void _append(T)(T val)
+        {
+            static if (isArray!T)
+            {
+                import std.range : ElementType;
+                static if (is(Unqual!(ElementType!T) == void))
+                    appendBytes(buffer, idx, val);
+                else foreach (e; val) _append(e);
+            }
+            else
+            {
+                static if (is(T == struct))
+                    foreach (v; val.tupleof) _append(v);
+                else static if (isNumeric!T) append(buffer, idx, val);
+                else static assert(0, "unsupported type " ~ T.stringof);
+            }
+        }
+        foreach (arg; args) _append(arg);
+        completeMessage(buffer, idx);
+        return buffer[0..idx];
+    }
 
-    Params:
-    BUFFER_SIZE = static size of message buffer
+    ///
+    enum ParseResult
+    {
+        success, ///
+        errorMsg, /// error message (fnc >= 0x80)
+        uncomplete, ///
+        checkFail /// for RTU check CRC fail
+    }
+
+    /++ Read data to temp message buffer
+        Params:
+        data = parsing data buffer, CRC and etc
+        result = reference to result message
+        +/
+    ParseResult parseMessage(const(void)[] data, ref Message result);
+
+    size_t minMsgLength() @property;
+    size_t notMessageDataLength() @property;
+
+protected:
+
+    /// start building message
+    void startMessage(void[] buf, ref size_t idx, ulong dev, ubyte func);
+
+    /// append data to message buffer
+    final void append(T)(void[] buf, ref size_t idx, T val)
+        if (isNumeric!T && !is(T == real))
+    {
+        union cst { T value; void[T.sizeof] data; }
+        appendBytes(buf, idx, pack(cst(val).data[]));
+    }
+    /// ditto
+    void appendBytes(void[] buf, ref size_t idx, const(void)[]);
+    /// finalize message
+    void completeMessage(void[] buf, ref size_t idx);
+
+    /// pack data to need layout for sending
+    const(void)[] pack(const(void)[]);
+}
+
+/++ Basic functionality of Backend
  +/
-class BaseBackend(size_t BUFFER_SIZE) : Modbus.Backend
+abstract class BaseBackend : Backend
 {
 protected:
     enum functionTypeSize = 1;
-    Connection conn;
     SpecRules sr;
 
-    ubyte[BUFFER_SIZE] buffer;
-    size_t idx;
-    immutable size_t minimumMsgLength;
+    immutable size_t _minMsgLength;
     immutable size_t devOffset;
     immutable size_t serviceData;
 
@@ -36,100 +105,68 @@ public:
             serviceData = size of CRC for RTU, protocol id for TCP etc
             deviceOffset = offset of device number (address) in message
      +/
-    this(Connection c, SpecRules s, size_t serviceData, size_t deviceOffset)
+    this(SpecRules s, size_t serviceData, size_t deviceOffset)
     {
-        if (c is null)
-            throw modbusException("connection is null");
-        conn = c;
-        sr = s !is null ? s : new BasicSpecRules;
+        this.sr = s !is null ? s : new BasicSpecRules;
         this.serviceData = serviceData;
-        devOffset = deviceOffset;
-
-        minimumMsgLength = serviceData + sr.deviceTypeSize + functionTypeSize;
+        this.devOffset = deviceOffset;
+        _minMsgLength = serviceData + sr.deviceTypeSize + functionTypeSize + ubyte.sizeof;
     }
-
-    protected void preStart() { idx = 0; }
-    protected void preRead() { idx = 0; }
-
-    ///
-    abstract void startAlgo(ulong dev, ubyte func);
-    ///
-    abstract Response readAlgo(size_t expectedBytes);
 
     override
     {
-        abstract void send();
-
-        ///
-        void start(ulong dev, ubyte func)
+        ParseResult parseMessage(const(void)[] data, ref Message msg)
         {
-            preStart();
-            startAlgo(dev, func);
+            if (data.length < startDataSplit+1+endDataSplit)
+                return ParseResult.uncomplete;
+            if (auto err = sr.peekDF(data[devOffset..$], msg.dev, msg.fnc))
+                return ParseResult.uncomplete;
+            auto ret = ParseResult.success;
+            if (msg.fnc >= 0x80)
+            {
+                data = data[0..startDataSplit+1+endDataSplit];
+                ret = ParseResult.errorMsg;
+            }
+            msg.data = data[startDataSplit..$-endDataSplit];
+            if (!check(data)) return ParseResult.checkFail;
+            return ret;
         }
 
-        ///
-        Response read(size_t expectedBytes)
-        {
-            preRead();
-            return readAlgo(expectedBytes);
-        }
-
-        void append(byte v) { append(sr.pack(v)); }
-        void append(short v) { append(sr.pack(v)); }
-        void append(int v) { append(sr.pack(v)); }
-        void append(long v) { append(sr.pack(v)); };
-        void append(float v) { append(sr.pack(v)); };
-        void append(double v) { append(sr.pack(v)); };
-
-        void append(const(void)[] v)
-        {
-            scope (failure) idx = 0;
-            auto inc = v.length;
-            if (idx + inc + serviceData >= buffer.length)
-                throw modbusException("many args");
-            buffer[idx..idx+inc] = cast(ubyte[])v;
-            idx += inc;
-            version (modbus_verbose)
-                .trace("append msg buffer data: ", buffer[0..idx]);
-        }
-
-        const(void)[] tempBuffer() const @property { return buffer[0..idx]; }
+        size_t minMsgLength() @property { return _minMsgLength; }
+        size_t notMessageDataLength() @property
+        { return serviceData + sr.deviceTypeSize + functionTypeSize; }
     }
 
 protected:
 
-    void appendDF(ulong dev, ubyte fnc) { append(sr.packDF(dev, fnc)); }
-
-    Response baseRead(size_t expectedBytes, bool allocateOnlyExpected=false)
+    override
     {
-        expectedBytes += minimumMsgLength;
-        version (modbus_verbose) .tracef("start read %d bytes", expectedBytes);
-
-        auto buf = buffer[];
-        if (allocateOnlyExpected) buf = buf[0..expectedBytes];
-        auto tmp = cast(ubyte[])conn.read(buf);
-        idx = tmp.length;
-        version (modbus_verbose) .trace(" readed bytes: ", tmp);
-
-        if (tmp.length < devOffset+sr.deviceTypeSize+functionTypeSize)
-            throw readDataLengthException(0, 0, expectedBytes, tmp.length);
-
-        Response res;
-        sr.peekDF(tmp[devOffset..$], res.dev, res.fnc);
-        res.data = tmp;
-
-        if (tmp.length < minimumMsgLength+1)
-            throw readDataLengthException(res.dev, res.fnc, expectedBytes, tmp.length);
-
-        if (res.data.length > expectedBytes)
+        void appendBytes(void[] buf, ref size_t idx, const(void)[] v)
         {
+            auto inc = v.length;
+            if (idx + inc + serviceData >= buf.length)
+                throw modbusException("many args");
+            buf[idx..idx+inc] = v[];
+            idx += inc;
             version (modbus_verbose)
-                .warningf("receive more bytes what expected (%d): %(0x%02x %)",
-                            expectedBytes, tmp[expectedBytes..$]);
-
-            res.data = res.data[0..expectedBytes];
+                .trace("append msg buffer data: ", buf[0..idx]);
         }
 
-        return res;
+        const(void)[] pack(const(void)[] data) { return sr.pack(data); }
     }
+
+    abstract
+    {
+        void startMessage(void[] buf, ref size_t idx, ulong dev, ubyte func);
+        void completeMessage(void[] buf, ref size_t idx);
+
+        bool check(const(void)[] data);
+        size_t endDataSplit() @property;
+    }
+
+    size_t startDataSplit() @property
+    { return devOffset + sr.deviceTypeSize + functionTypeSize; }
+
+    void appendDF(void[] buf, ref size_t idx, ulong dev, ubyte fnc)
+    { appendBytes(buf, idx, sr.packDF(dev, fnc)); }
 }

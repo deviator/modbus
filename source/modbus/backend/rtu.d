@@ -4,43 +4,24 @@ module modbus.backend.rtu;
 import modbus.backend.base;
 
 ///
-class RTU : BaseBackend!256
+class RTU : BaseBackend
 {
 protected:
     enum lengthOfCRC = 2;
 
 public:
     ///
-    this(Connection c, SpecRules s=null) { super(c, s, lengthOfCRC, 0); }
+    this(SpecRules s=null) { super(s, lengthOfCRC, 0); }
 
-override:
-    ///
-    protected void startAlgo(ulong dev, ubyte func) { appendDF(dev, func); }
+protected override:
+    void startMessage(void[] buf, ref size_t idx, ulong dev, ubyte fnc)
+    { appendDF(buf, idx, dev, fnc); }
 
-    ///
-    void send()
-    {
-        append(cast(const(void)[])(crc16(buffer[0..idx])[]));
-        conn.write(buffer[0..idx]);
-        version (modbusverbose)
-            .trace("write bytes: ", buffer[0..idx]);
-    }
+    void completeMessage(void[] buf, ref size_t idx)
+    { appendBytes(buf, idx, cast(void[])crc16(buf[0..idx])); }
 
-    ///
-    protected Response readAlgo(size_t expectedBytes)
-    {
-        auto res = baseRead(expectedBytes);
-        auto spack = devOffset+sr.deviceTypeSize+functionTypeSize;
-        // errors can have noise before crc
-        if ((cast(ubyte[])res.data)[devOffset+sr.deviceTypeSize] >= 0x80)
-            res.data = res.data[0..spack+ubyte.sizeof+lengthOfCRC];
-
-        if (!checkCRC(res.data))
-            throw checkCRCException(res.dev, res.fnc);
-
-        res.data = res.data[spack..$-lengthOfCRC];
-        return res;
-    }
+    bool check(const(void)[] data) { return checkCRC(data); }
+    size_t endDataSplit() @property { return lengthOfCRC; }
 }
 
 unittest
@@ -48,29 +29,15 @@ unittest
     import std.algorithm;
     import std.bitmanip;
 
-    void[] buf;
+    void[100] data = void;
 
-    auto rtu = new RTU(new class Connection
-    { override:
-        void write(const(void)[] t) { buf = t.dup; }
-        void[] read(void[] buffer)
-        {
-            assert(buffer.length <= buf.length);
-            buffer[0..buf.length] = buf[];
-            return buffer[0..buf.length];
-        }
-    });
-
+    auto rtu = new RTU();
     enum C1 = ushort(10100);
     enum C2 = ushort(12345);
-    rtu.start(1, 6);
-    rtu.append(C1);
-    rtu.append(C2);
-    assert(rtu.tempBuffer.length == 2 + 2 + 2);
-    rtu.send();
-    assert(rtu.tempBuffer.length == 2 + 2 + 2 + 2);
-    assert(equal(cast(ubyte[])buf[0..$-2],
-                cast(ubyte[])[1, 6] ~ nativeToBigEndian(C1) ~ nativeToBigEndian(C2)));
+    auto buf = cast(ubyte[])rtu.buildMessage(data, 1, 6, C1, C2);
+    assert(equal(buf[0..$-2], cast(ubyte[])[1, 6] ~
+                                nativeToBigEndian(C1) ~
+                                nativeToBigEndian(C2)));
 
     auto crc = cast(ubyte[])crc16(buf[0..$-2]);
     assert(crc[0] == (cast(ubyte[])buf)[$-2]);

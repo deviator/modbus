@@ -1,11 +1,11 @@
 ///
-module modbus.backend.connection;
+module modbus.connection;
 
 /// Connection for backends
 interface Connection
 {
     /// Write data to connection
-    void write(const(void)[] data);
+    size_t write(const(void)[] data);
 
     /++ Read data from connection
         Params:
