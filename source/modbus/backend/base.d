@@ -63,10 +63,15 @@ interface Backend
     size_t minMsgLength() @property;
     size_t notMessageDataLength() @property;
 
-    T parseData(T)(const(void)[] data)
-    { return (cast(T[])unpack(data))[0]; }
+    final
+    {
+        const(void)[] packT(T)(T value) { return sr.packT(value); }
+        T unpackT(T)(const(void)[] data) { return sr.unpackT!T(data); }
+    }
 
 protected:
+
+    SpecRules sr() @property;
 
     /// start building message
     void startMessage(void[] buf, ref size_t idx, ulong dev, ubyte func);
@@ -76,17 +81,12 @@ protected:
         if (isNumeric!T && !is(T == real))
     {
         union cst { T value; void[T.sizeof] data; }
-        appendBytes(buf, idx, pack(cst(val).data[]));
+        appendBytes(buf, idx, sr.pack(cst(val).data[]));
     }
     /// ditto
     void appendBytes(void[] buf, ref size_t idx, const(void)[]);
     /// finalize message
     void completeMessage(void[] buf, ref size_t idx);
-
-    /// pack data to need layout for sending
-    const(void)[] pack(const(void)[]);
-    /// pack data from sending layout
-    const(void)[] unpack(const(void)[]);
 }
 
 /++ Basic functionality of Backend
@@ -95,11 +95,13 @@ abstract class BaseBackend : Backend
 {
 protected:
     enum functionTypeSize = 1;
-    SpecRules sr;
+    SpecRules specRules;
 
     immutable size_t _minMsgLength;
     immutable size_t devOffset;
     immutable size_t serviceData;
+
+    override SpecRules sr() @property { return specRules; }
 
 public:
 
@@ -112,7 +114,7 @@ public:
      +/
     this(SpecRules s, size_t serviceData, size_t deviceOffset)
     {
-        this.sr = s !is null ? s : new BasicSpecRules;
+        this.specRules = s !is null ? s : new BasicSpecRules;
         this.serviceData = serviceData;
         this.devOffset = deviceOffset;
         _minMsgLength = serviceData + sr.deviceTypeSize + functionTypeSize + ubyte.sizeof;
@@ -156,9 +158,6 @@ protected:
             version (modbus_verbose)
                 .trace("append msg buffer data: ", buf[0..idx]);
         }
-
-        const(void)[] pack(const(void)[] data) { return sr.pack(data); }
-        const(void)[] unpack(const(void)[] data) { return sr.unpack(data); }
     }
 
     abstract

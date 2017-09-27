@@ -19,7 +19,7 @@ pure @nogc:
     ///
     const(void)[] pack(const(void)[]);
     ///
-    const(void)[] packT(T)(T value)
+    final const(void)[] packT(T)(T value)
     { return pack((cast(void*)&value)[0..T.sizeof]); }
 
     ///

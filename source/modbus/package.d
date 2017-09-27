@@ -123,23 +123,31 @@ unittest
     assert(equal(mbus.readInputRegisters(1, 0, 4), [2345, 50080, 34, 42]));
 }
 
-unittest
+version (unittest)
 {
-    auto sr = new BasicSpecRules;
-    auto rtu = new RTU(sr);
+    //version = verbose;
 
-    import std.array;
     import std.stdio;
     import std.datetime;
+    import std.range;
 
-    ubyte[] channelA, channelB;
-
-    auto conA = new class Connection
+    class ConT1 : Connection
     {
+        string name;
+        ubyte[]* wbuf;
+        ubyte[]* rbuf;
+        this(string name, ref ubyte[] wbuf, ref ubyte[] rbuf)
+        {
+            this.name = name;
+            this.wbuf = &wbuf;
+            this.rbuf = &rbuf;
+        }
     override:
         size_t write(const(void[]) msg)
         {
-            channelA = cast(ubyte[])(msg.dup);
+            (*wbuf) = cast(ubyte[])(msg.dup);
+            version (verbose)
+                stderr.writefln("%s write %s", name, (*wbuf));
             return msg.length;
         }
 
@@ -147,78 +155,159 @@ unittest
         {
             auto ub = cast(ubyte[])buffer;
             size_t i;
+            version (verbose)
+                stderr.writefln("%s read %s", name, (*rbuf));
             for (i=0; i < ub.length; i++)
             {
-                if (channelB.empty)
+                if ((*rbuf).empty)
                     return buffer[0..i];
-                ub[i] = channelB.front;
-                channelB.popFront;
+                ub[i] = (*rbuf).front;
+                (*rbuf).popFront;
             }
             return buffer[0..i];
         }
-    };
+    }
 
-    auto conB = new class Connection
+    class ConT2 : ConT1
     {
+        import std.random;
+
+        this(string name, ref ubyte[] wbuf, ref ubyte[] rbuf)
+        { super(name, wbuf, rbuf); }
+
+        void slp(Duration d)
+        {
+            import core.thread;
+            auto dt = StopWatch(AutoStart.yes);
+            import std.conv : to;
+            while (dt.peek.to!Duration < d) Fiber.yield();
+        }
+
     override:
         size_t write(const(void[]) msg)
         {
-            channelB = cast(ubyte[])(msg.dup);
-            return msg.length;
+            auto l = uniform!"[]"(0, msg.length);
+            (*wbuf) ~= cast(ubyte[])(msg[0..l].dup);
+            slp(uniform(1, 20).usecs);
+            version (verbose)
+                stderr.writefln("%s write %s", name, (*wbuf));
+            return l;
         }
 
         void[] read(void[] buffer)
         {
+            auto l = uniform!"[]"(0, (*rbuf).length);
             auto ub = cast(ubyte[])buffer;
             size_t i;
+            version (verbose)
+                stderr.writefln("%s read %s", name, (*rbuf));
             for (i=0; i < ub.length; i++)
             {
-                if (channelA.empty)
+                if (i > l) return buffer[0..i];
+                slp(uniform(1, 5).msecs);
+                if ((*rbuf).empty)
                     return buffer[0..i];
-                ub[i] = channelA.front;
-                channelA.popFront;
+                ub[i] = (*rbuf).front;
+                (*rbuf).popFront;
             }
             return buffer[0..i];
         }
-    };
+    }
 
-    auto mm = new ModbusMaster(conA, rtu);
-    mm.readTimeout = 200.msecs;
-
-    auto ccc = conB;
-
-    auto ms = new class ModbusSlave
+    void testFunc(CT)()
     {
-        this() { super(1, ccc, rtu); }
-    override:
-        MsgProcRes onReadHoldingRegisters(ushort start, ushort count)
+        auto sr = new BasicSpecRules;
+        auto rtu = new RTU(sr);
+
+        ubyte[] chA, chB;
+
+        auto conA = new CT("A", chA, chB);
+        auto conB = new CT("B", chB, chA);
+
+        auto mm = new ModbusMaster(conA, rtu);
+        mm.readTimeout = 200.msecs;
+
+        auto ms = new class ModbusSlave
         {
-            return mpr(cast(void[])(cast(ubyte[])[count*2]) ~
-            cast(void[])((cast(ushort[])[1,2,3,4,5,6,7,8,9])[start..start+count]));
-        }
-    };
+            ushort[] table;
+            this()
+            {
+                super(1, conB, rtu);
+                table = [123, 234, 345, 456, 567, 678, 789, 890, 901];
+            }
+        override:
+            MsgProcRes onReadHoldingRegisters(ushort start, ushort count)
+            {
+                version (verbose)
+                {
+                    import std.stdio;
+                    stderr.writeln("count check fails: ", count == 0 || count > 125);
+                    stderr.writeln("start check fails: ", start >= table.length);
+                }
+                if (count == 0 || count > 125) return illegalDataValue;
+                if (start >= table.length) return illegalDataAddress;
 
-    import core.thread;
+                return mpr(cast(ubyte)(count*2),
+                    table[start..start+count]);
+            }
+        };
 
-    auto f1 = new Fiber(
-    {
-        auto data = mm.readHoldingRegisters(1, 2, 3);
-    });
+        import core.thread;
 
-    auto f2 = new Fiber({
+        auto f1 = new Fiber(
+        {
+            bool thrown;
+            try mm.readHoldingRegisters(1, 3, 200);
+            catch (FunctionErrorException e)
+            {
+                thrown = true;
+                assert(e.code == FunctionErrorCode.ILLEGAL_DATA_VALUE);
+            }
+            assert (thrown);
+
+            thrown = false;
+            try mm.readHoldingRegisters(1, 200, 2);
+            catch (FunctionErrorException e)
+            {
+                thrown = true;
+                assert(e.code == FunctionErrorCode.ILLEGAL_DATA_ADDRESS);
+            }
+            assert (thrown);
+
+            thrown = false;
+            try mm.readInputRegisters(1, 200, 2);
+            catch (FunctionErrorException e)
+            {
+                thrown = true;
+                assert(e.code == FunctionErrorCode.ILLEGAL_FUNCTION);
+            }
+            assert (thrown);
+
+            auto data = mm.readHoldingRegisters(1, 2, 3);
+            assert (data == [345, 456, 567]);
+        });
+
+        auto f2 = new Fiber({
+            while (true)
+            {
+                ms.iterate();
+                import std.conv;
+                auto dt = StopWatch(AutoStart.yes);
+                while (dt.peek.to!Duration < 1.msecs)
+                    Fiber.yield();
+            }
+        });
         while (true)
         {
-            ms.iterate();
-            import std.conv;
-            auto dt = StopWatch(AutoStart.yes);
-            while (dt.peek.to!Duration < 1.msecs)
-                Fiber.yield();
+            if (f1.state == f1.state.TERM) break;
+            f1.call();
+            f2.call();
         }
-    });
-    while (true)
-    {
-        if (f1.state == f1.state.TERM) break;
-        f1.call();
-        f2.call();
     }
+}
+
+unittest
+{
+    testFunc!ConT1();
+    testFunc!ConT2();
 }

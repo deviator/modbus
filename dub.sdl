@@ -7,7 +7,7 @@ license "MIT"
 
 configuration "serialport" {
     targetType "library"
-    dependency "serialport" version="~>0.4.2"
+    dependency "serialport" version="~>0.6.0"
 }
 
 configuration "custom" {

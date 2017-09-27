@@ -4,172 +4,119 @@ module modbus.facade;
 import modbus.backend;
 import modbus.protocol;
 
-//version(Have_serialport)
-//{
-//    public import std.datetime : Duration, dur, hnsecs, nsecs, msecs, seconds;
-//    public import serialport;
-//
-//    /// Modbus with RTU backend constructs from existing serial port object
-//    class ModbusRTU : Modbus
-//    {
-//    protected:
-//        SerialPort _com;
-//
-//        class C : Connection
-//        {
-//        override:
-//            void write(const(void)[] msg)
-//            { _com.write(msg, writeTimeout); }
-//
-//            void[] read(void[] buffer)
-//            { return _com.read(buffer, readTimeout, readFrameGap); }
-//        }
-//
-//    public:
-//
-//        ///
-//        Duration writeTimeout = 100.msecs,
-//                 readTimeout = 1.seconds,
-//                 readFrameGap = 50.msecs;
-//
-//        ///
-//        this(string dev, uint baudrate, StopBits stopbits=StopBits.one,
-//             Parity parity=Parity.none, DataBits databits=DataBits.data8)
-//        {
-//            _com = new SerialPort(dev, SerialPort.Config(baudrate, parity, databits, stopbits));
-//            super(new RTU(new C, null));
-//        }
-//
-//        ///
-//        this(string dev, SerialPort.Config cfg, void delegate(Duration) sf, SpecRules sr=null)
-//        {
-//            _com = new SerialPort(dev, cfg, sf);
-//            super(new RTU(new C, sr));
-//        }
-//
-//        ///
-//        this(SerialPort sp, SpecRules sr=null)
-//        {
-//            import std.exception : enforce;
-//            _com = enforce(sp, "serial port is null");
-//            super(new RTU(new C, sr));
-//        }
-//
-//        ///
-//        void flush()
-//        {
-//            try
-//            {
-//                auto res = be.read(240);
-//                version (modbus_verbose)
-//                    .info("flush ", cast(ubyte[])(res.data));
-//            }
-//            catch (TimeoutException e)
-//                version (modbus_verbose)
-//                    .trace("flust timeout");
-//        }
-//
-//        @property
-//        {
-//            ///
-//            SerialPort com() { return _com; }
-//            ///
-//            const(SerialPort) com() const { return _com; }
-//        }
-//
-//        ///
-//        auto setSleepFunc(void delegate(Duration) f) { _com.sleepFunc = f; return this; }
-//
-//        ~this() { _com.destroy(); }
-//    }
-//}
-//
-//import std.socket;
-//public import std.socket : Address, InternetAddress, Internet6Address;
-//version (Posix) public import std.socket : UnixAddress;
-//
-///// Modbus with TCP backend based on TcpSocket from std.socket
-//class ModbusTCP : Modbus
-//{
-//protected:
-//    TcpSocket _socket;
-//
-//    void yield()
-//    {
-//        import core.thread;
-//        if (yieldFunc !is null) yieldFunc();
-//        else if (Fiber.getThis !is null) Fiber.yield();
-//        else
-//        {
-//            // unspecific state, if vars must
-//            // changes it can be not changed
-//            version (modbus_verbose)
-//                .warning("unspecific state: Thread.yield can block execution");
-//            Thread.yield();
-//        }
-//    }
-//
-//    void delegate() yieldFunc;
-//
-//    class C : Connection
-//    {
-//    override:
-//        void write(const(void)[] msg)
-//        {
-//            size_t sent;
-//
-//            while (sent != msg.length)
-//            {
-//                const res = _socket.send(msg[sent..$]);
-//                if (res == Socket.ERROR)
-//                    throw modbusException("error while send data to tcp socket");
-//
-//                sent += res;
-//                yield();
-//            }
-//        }
-//
-//        void[] read(void[] buffer)
-//        {
-//            size_t received;
-//            ptrdiff_t res = -1;
-//            while (res != 0)
-//            {
-//                res = _socket.receive(buffer[received..$]);
-//                if (res == Socket.ERROR)
-//                    throw modbusException("error while receive data from tcp socket");
-//
-//                received += res;
-//                yield();
-//            }
-//
-//            return buffer[0..received];
-//        }
-//    }
-//
-//public:
-//
-//    ///
-//    this(Address addr, void delegate() yieldFunc=null, SpecRules sr=null)
-//    {
-//        _socket = new TcpSocket(addr);
-//
-//        if (yieldFunc !is null)
-//        {
-//            _socket.blocking(false);
-//            this.yieldFunc = yieldFunc;
-//        }
-//
-//        super(new TCP(new C, sr));
-//    }
-//
-//    @property
-//    {
-//        ///
-//        TcpSocket socket() { return _socket; }
-//        ///
-//        const(TcpSocket) socket() const { return _socket; }
-//    }
-//
-//    ~this() { _socket.close(); }
-//}
+version(Have_serialport)
+{
+    public import std.datetime : Duration, dur, hnsecs, nsecs, msecs, seconds;
+    public import serialport;
+
+    /// Modbus with RTU backend constructs from existing serial port object
+    class ModbusRTUMaster : ModbusMaster
+    {
+    protected:
+        SerialPort _com;
+
+        class C : Connection { override:
+            size_t write(const(void)[] msg) { return _com.write(msg); }
+            void[] read(void[] buffer) { return _com.read(buffer); }
+        }
+
+    public:
+
+        ///
+        this(string port, uint baudrate, StopBits stopbits=StopBits.one,
+             Parity parity=Parity.none, DataBits databits=DataBits.data8)
+        {
+            _com = new SerialPort(port, SerialPort.Config(baudrate,
+                                    parity, databits, stopbits));
+            super(new C, new RTU);
+        }
+
+        ///
+        this(string dev, SerialPort.Config cfg, void delegate(Duration) sf, SpecRules sr=null)
+        {
+            _com = new SerialPort(dev, cfg, sf);
+            super(new C, new RTU(sr), sf);
+        }
+
+        ///
+        this(SerialPort sp, SpecRules sr=null)
+        {
+            import std.exception : enforce;
+            _com = enforce(sp, "serial port is null");
+            super(new C, new RTU(sr));
+        }
+
+        ///
+        void flush()
+        {
+            try
+            {
+                void[240] buf = void;
+                auto res = com.read(buf);
+                version (modbus_verbose)
+                    .info("flush ", cast(ubyte[])(res));
+            }
+            catch (TimeoutException e)
+                version (modbus_verbose)
+                    .trace("flust timeout");
+        }
+
+        inout(SerialPort) com() inout @property { return _com; }
+
+        ///
+        auto setSleepFunc(void delegate(Duration) f)
+        {
+            sleepFunc = f;
+            _com.sleepFunc = f;
+            return this;
+        }
+
+        ~this() { _com.destroy(); }
+    }
+}
+
+import std.socket;
+public import std.socket : Address, InternetAddress, Internet6Address;
+version (Posix) public import std.socket : UnixAddress;
+
+/// Modbus with TCP backend based on TcpSocket from std.socket
+class ModbusTCP : Modbus
+{
+protected:
+    TcpSocket _socket;
+
+    class C : Connection
+    {
+    override:
+        size_t write(const(void)[] msg)
+        {
+            const res = _socket.send(msg);
+            if (res == Socket.ERROR)
+                throw modbusException("error while send data to tcp socket");
+            return res;
+        }
+
+        void[] read(void[] buffer)
+        {
+            const res = _socket.receive(buffer);
+            if (res == Socket.ERROR)
+                throw modbusException("error while receive data from tcp socket");
+            return buffer[0..res];
+        }
+    }
+
+public:
+
+    ///
+    this(Address addr, SpecRules sr=null)
+    {
+        _socket = new TcpSocket(addr);
+        _socket.blocking(false);
+        super(new C, new TCP(sr));
+    }
+
+    ///
+    inout(TcpSocket) socket() inout @property { return _socket; }
+
+    ~this() { _socket.close(); }
+}
