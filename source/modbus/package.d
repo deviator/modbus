@@ -2,6 +2,7 @@
 module modbus;
 
 public:
+import modbus.backend;
 import modbus.exception;
 import modbus.protocol;
 import modbus.facade;
@@ -13,7 +14,6 @@ unittest
     static import std.bitmanip;
     alias bwrite = std.bitmanip.write;
     alias bread = std.bitmanip.read;
-    import modbus.backend;
 
     static class ModbusEmulator
     {
@@ -96,7 +96,7 @@ unittest
 
         void storeFail(ubyte fnc, FunctionErrorCode c)
         {
-            bwrite(res[], cast(ubyte)(fnc|0xF0), &idx);
+            bwrite(res[], cast(ubyte)(fnc|0x80), &idx);
             bwrite(res[], cast(ubyte)c, &idx);
         }
 
@@ -121,4 +121,104 @@ unittest
     assert(mbus.readInputRegisters(70, 0, 1)[0] == 1234);
     import std.algorithm : equal;
     assert(equal(mbus.readInputRegisters(1, 0, 4), [2345, 50080, 34, 42]));
+}
+
+unittest
+{
+    auto sr = new BasicSpecRules;
+    auto rtu = new RTU(sr);
+
+    import std.array;
+    import std.stdio;
+    import std.datetime;
+
+    ubyte[] channelA, channelB;
+
+    auto conA = new class Connection
+    {
+    override:
+        size_t write(const(void[]) msg)
+        {
+            channelA = cast(ubyte[])(msg.dup);
+            return msg.length;
+        }
+
+        void[] read(void[] buffer)
+        {
+            auto ub = cast(ubyte[])buffer;
+            size_t i;
+            for (i=0; i < ub.length; i++)
+            {
+                if (channelB.empty)
+                    return buffer[0..i];
+                ub[i] = channelB.front;
+                channelB.popFront;
+            }
+            return buffer[0..i];
+        }
+    };
+
+    auto conB = new class Connection
+    {
+    override:
+        size_t write(const(void[]) msg)
+        {
+            channelB = cast(ubyte[])(msg.dup);
+            return msg.length;
+        }
+
+        void[] read(void[] buffer)
+        {
+            auto ub = cast(ubyte[])buffer;
+            size_t i;
+            for (i=0; i < ub.length; i++)
+            {
+                if (channelA.empty)
+                    return buffer[0..i];
+                ub[i] = channelA.front;
+                channelA.popFront;
+            }
+            return buffer[0..i];
+        }
+    };
+
+    auto mm = new ModbusMaster(conA, rtu);
+    mm.readTimeout = 200.msecs;
+
+    auto ccc = conB;
+
+    auto ms = new class ModbusSlave
+    {
+        this() { super(1, ccc, rtu); }
+    override:
+        MsgProcRes onReadHoldingRegisters(ushort start, ushort count)
+        {
+            return mpr(cast(void[])(cast(ubyte[])[count*2]) ~
+            cast(void[])((cast(ushort[])[1,2,3,4,5,6,7,8,9])[start..start+count]));
+        }
+    };
+
+    import core.thread;
+
+    auto f1 = new Fiber(
+    {
+        auto data = mm.readHoldingRegisters(1, 2, 3);
+    });
+
+    auto f2 = new Fiber({
+        while (true)
+        {
+            ms.iterate();
+            import std.conv;
+            auto dt = StopWatch(AutoStart.yes);
+            while (dt.peek.to!Duration < 1.msecs)
+                Fiber.yield();
+        }
+    });
+    while (true)
+    {
+        if (f1.state == f1.state.TERM) break;
+        f1.call();
+        f2.call();
+    }
 }

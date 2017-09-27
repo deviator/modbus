@@ -63,6 +63,9 @@ interface Backend
     size_t minMsgLength() @property;
     size_t notMessageDataLength() @property;
 
+    T parseData(T)(const(void)[] data)
+    { return (cast(T[])unpack(data))[0]; }
+
 protected:
 
     /// start building message
@@ -82,6 +85,8 @@ protected:
 
     /// pack data to need layout for sending
     const(void)[] pack(const(void)[]);
+    /// pack data from sending layout
+    const(void)[] unpack(const(void)[]);
 }
 
 /++ Basic functionality of Backend
@@ -153,6 +158,7 @@ protected:
         }
 
         const(void)[] pack(const(void)[] data) { return sr.pack(data); }
+        const(void)[] unpack(const(void)[] data) { return sr.unpack(data); }
     }
 
     abstract

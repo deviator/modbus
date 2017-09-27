@@ -57,6 +57,8 @@ public:
 
     ///
     Duration writeTimeout=10.msecs;
+    /// time for waiting message
+    Duration readTimeout=1.seconds;
 
     ///
     Duration writeStepPause = (cast(ulong)(1e7 * 10 / 9600.0)).hnsecs;
@@ -95,11 +97,8 @@ class ModbusMaster : Modbus
     this(Connection con, Backend be, void delegate(Duration) sf=null)
     { super(con, be, sf); }
 
-    /// time for waiting message
-    Duration readTimeout=1.seconds;
-
-    ///
-    Duration readStepPause = (cast(ulong)(1e7 * 10 / 9600.0)).hnsecs;
+    /// approx 1 byte (10 bits) on 9600 speed
+    Duration readStepPause = (cast(ulong)(1e6/96.0)).hnsecs;
 
     /++ Read from serial port
 
@@ -119,20 +118,19 @@ class ModbusMaster : Modbus
         try
         {
             auto step = be.minMsgLength;
-            import std.stdio;
             auto dt = StopWatch(AutoStart.yes);
             import std.stdio;
-            RL: while (cnt < mustRead)
+            RL: while (cnt <= mustRead)
             {
                 auto tmp = con.read(buffer[cnt..cnt+step]);
                 cnt += tmp.length;
-                step = 1;
+                if (tmp.length) step = 1;
                 auto res = be.parseMessage(buffer[0..cnt], msg);
                 with (Backend.ParseResult) FS: final switch(res)
                 {
                     case success:
                         if (cnt == mustRead) break RL;
-                        else throw readDataLengthException(dev, fnc, bytes, cnt);
+                        else throw readDataLengthException(dev, fnc, mustRead, cnt);
                     case errorMsg: break RL;
                     case uncomplete: break FS;
                     case checkFail:
@@ -244,6 +242,9 @@ class ModbusSlave : Modbus
 {
 protected:
     ulong dev;
+    size_t readed;
+    StopWatch dt;
+    bool broadcastAnswer;
 
 public:
     ///
@@ -251,26 +252,121 @@ public:
     {
         super(con, be, sf);
         this.dev = dev;
+        // approx 10 bytes (10 bits) on 9600 speed
+        readTimeout = (cast(ulong)(1e7/96.0)).hnsecs;
+        broadcastAnswer = false;
     }
 
-    void onMessage(Message msg)
-    {
+    import std.typecons;
 
+    alias MsgProcRes = Tuple!(uint, "error", void[], "data");
+
+    enum void[] _ill = cast(void[])[FunctionErrorCode.ILLEGAL_FUNCTION];
+    enum MsgProcRes illegal = MsgProcRes(true, _ill);
+
+    static MsgProcRes mpr(void[] data, bool err=false)
+    { return MsgProcRes(err, data); }
+
+    /// function number 0x1 (1)
+    MsgProcRes onReadCoils(ushort start, ushort count) { return illegal; }
+    /// function number 0x2 (2)
+    MsgProcRes onReadDiscreteInputs(ushort start, ushort count) { return illegal; }
+    /// function number 0x3 (3)
+    MsgProcRes onReadHoldingRegisters(ushort start, ushort count) { return illegal; }
+    /// function number 0x4 (4)
+    MsgProcRes onReadInputRegisters(ushort start, ushort count) { return illegal; }
+
+    /// function number 0x5 (5)
+    MsgProcRes onWriteSingleCoil(ushort addr, ushort val) { return illegal; }
+    /// function number 0x6 (6)
+    MsgProcRes onWriteSingleRegister(ushort addr, ushort val) { return illegal; }
+
+    /// function number 0x10 (16)
+    MsgProcRes onWriteMultipleRegister(ushort addr, ushort[] vals) { return illegal; }
+
+    MsgProcRes onMessage(Message m)
+    {
+        enum us = ushort.sizeof;
+        switch (m.fnc)
+        {
+            case 1: return onReadCoils(
+                be.parseData!ushort(m.data[0..us]),
+                be.parseData!ushort(m.data[us..us*2]));
+            case 2: return onReadDiscreteInputs(
+                be.parseData!ushort(m.data[0..us]),
+                be.parseData!ushort(m.data[us..us*2]));
+            case 3: return onReadHoldingRegisters(
+                be.parseData!ushort(m.data[0..us]),
+                be.parseData!ushort(m.data[us..us*2]));
+            case 4: return onReadInputRegisters(
+                be.parseData!ushort(m.data[0..us]),
+                be.parseData!ushort(m.data[us..us*2]));
+            case 5: return onWriteSingleCoil(
+                be.parseData!ushort(m.data[0..us]),
+                be.parseData!ushort(m.data[us..us*2]));
+            case 6: return onWriteSingleRegister(
+                be.parseData!ushort(m.data[0..us]),
+                be.parseData!ushort(m.data[us..us*2]));
+            case 16:
+                auto addr = be.parseData!ushort(m.data[0..us]);
+                auto cnt = be.parseData!ushort(m.data[us..us*2]);
+                auto data = cast(ushort[])(m.data[us*2+1..$]);
+                foreach (el; data)
+                    el = be.parseData!ushort(cast(void[])[el]);
+                return onWriteMultipleRegister(addr, data);
+            default: return illegal;
+        }
+    }
+
+    void onMessageCallAndSendResult(ref const Message msg)
+    {
+        typeof(onMessage(msg)) res;
+        try
+        {
+            if (msg.dev == 0)
+            {
+                res = onMessage(msg);
+                if (!broadcastAnswer) return;
+            }
+            else if (msg.dev != dev) return;
+            else res = onMessage(msg);
+            write(dev, msg.fnc | (res.error ? 0x80 : 0), res.data);
+        }
+        catch (Throwable e)
+            write(dev, msg.fnc|0x80, FunctionErrorCode.SLAVE_DEVICE_FAILURE);
     }
 
     ///
     void iterate()
     {
-        Message res;
-
-        if (res.dev == 0) // broadcast
+        import std.stdio;
+        Message msg;
+        if (dt.peek.to!Duration > readTimeout)
         {
-
+            dt.stop();
+            readed = 0;
         }
-        else if (res.dev != dev) return; // not for this device
-        else
-        {
 
+        size_t now_readed;
+
+        do
+        {
+            now_readed = con.read(buffer[readed..$]).length;
+            readed += now_readed;
+        }
+        while (now_readed);
+
+        if (!readed) return;
+        if (!dt.running) dt.start();
+
+        auto res = be.parseMessage(buffer[0..readed], msg);
+
+        with (Backend.ParseResult) final switch(res)
+        {
+            case success: onMessageCallAndSendResult(msg); break;
+            case errorMsg: /+ master send error? WTF? +/ break;
+            case uncomplete: break;
+            case checkFail: break;
         }
     }
 }
