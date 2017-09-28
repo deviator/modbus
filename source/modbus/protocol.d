@@ -357,7 +357,11 @@ public:
             write(dev, msg.fnc | (res.error ? 0x80 : 0), res.data);
         }
         catch (Throwable e)
-            write(dev, msg.fnc|0x80, FunctionErrorCode.SLAVE_DEVICE_FAILURE);
+        {
+            import std.experimental.logger;
+            errorf("%s", e);
+            this.write(dev, msg.fnc|0x80, FunctionErrorCode.SLAVE_DEVICE_FAILURE);
+        }
     }
 
     ///

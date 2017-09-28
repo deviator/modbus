@@ -1,0 +1,4 @@
+name "example_rirs"
+targetType "executable"
+dependency "modbus" path="../../"
+mainSourceFile "app.d"

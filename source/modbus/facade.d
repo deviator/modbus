@@ -9,41 +9,42 @@ version(Have_serialport)
     public import std.datetime : Duration, dur, hnsecs, nsecs, msecs, seconds;
     public import serialport;
 
+    class SerialPortConnection : Connection
+    {
+        SerialPort sp;
+        this(SerialPort sp) { this.sp = sp; }
+    override:
+        size_t write(const(void)[] msg) { return sp.write(msg); }
+        void[] read(void[] buffer) { return sp.read(buffer); }
+    }
+
     /// Modbus with RTU backend constructs from existing serial port object
     class ModbusRTUMaster : ModbusMaster
     {
     protected:
-        SerialPort _com;
-
-        class C : Connection { override:
-            size_t write(const(void)[] msg) { return _com.write(msg); }
-            void[] read(void[] buffer) { return _com.read(buffer); }
-        }
+        SerialPortConnection spcom;
 
     public:
 
         ///
         this(string port, uint baudrate, StopBits stopbits=StopBits.one,
              Parity parity=Parity.none, DataBits databits=DataBits.data8)
-        {
-            _com = new SerialPort(port, SerialPort.Config(baudrate,
-                                    parity, databits, stopbits));
-            super(new C, new RTU);
-        }
+        { this(port, SerialPort.Config(baudrate, parity, databits, stopbits)); }
 
         ///
-        this(string dev, SerialPort.Config cfg, void delegate(Duration) sf, SpecRules sr=null)
-        {
-            _com = new SerialPort(dev, cfg, sf);
-            super(new C, new RTU(sr), sf);
-        }
+        this(string port, SerialPort.Config cfg, void delegate(Duration) sf=null,
+            SpecRules sr=null)
+        { this(new SerialPort(port, cfg, sf), sf, sr); }
 
         ///
-        this(SerialPort sp, SpecRules sr=null)
+        this(string port, uint baudrate, void delegate(Duration) sf, SpecRules sr=null)
+        { this(new SerialPort(port, baudrate, sf), sf, sr); }
+
+        ///
+        this(SerialPort sp, void delegate(Duration) sf=null, SpecRules sr=null)
         {
-            import std.exception : enforce;
-            _com = enforce(sp, "serial port is null");
-            super(new C, new RTU(sr));
+            spcom = new SerialPortConnection(sp); 
+            super(spcom, new RTU(sr));
         }
 
         ///
@@ -61,17 +62,17 @@ version(Have_serialport)
                     .trace("flust timeout");
         }
 
-        inout(SerialPort) com() inout @property { return _com; }
+        inout(SerialPort) com() inout @property { return spcom.sp; }
 
         ///
         auto setSleepFunc(void delegate(Duration) f)
         {
             sleepFunc = f;
-            _com.sleepFunc = f;
+            spcom.sp.sleepFunc = f;
             return this;
         }
 
-        ~this() { _com.destroy(); }
+        ~this() { spcom.sp.destroy(); }
     }
 }
 

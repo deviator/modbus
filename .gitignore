@@ -11,3 +11,5 @@ doc
 *.exe
 *-test-*
 *~
+
+example_*

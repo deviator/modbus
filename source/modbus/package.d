@@ -125,7 +125,7 @@ unittest
 
 version (unittest)
 {
-    //version = verbose;
+    //version = modbus_verbose;
 
     import std.stdio;
     import std.datetime;
@@ -146,7 +146,7 @@ version (unittest)
         size_t write(const(void[]) msg)
         {
             (*wbuf) = cast(ubyte[])(msg.dup);
-            version (verbose)
+            version (modbus_verbose)
                 stderr.writefln("%s write %s", name, (*wbuf));
             return msg.length;
         }
@@ -155,7 +155,7 @@ version (unittest)
         {
             auto ub = cast(ubyte[])buffer;
             size_t i;
-            version (verbose)
+            version (modbus_verbose)
                 stderr.writefln("%s read %s", name, (*rbuf));
             for (i=0; i < ub.length; i++)
             {
@@ -189,7 +189,7 @@ version (unittest)
             auto l = uniform!"[]"(0, msg.length);
             (*wbuf) ~= cast(ubyte[])(msg[0..l].dup);
             slp(uniform(1, 20).usecs);
-            version (verbose)
+            version (modbus_verbose)
                 stderr.writefln("%s write %s", name, (*wbuf));
             return l;
         }
@@ -199,7 +199,7 @@ version (unittest)
             auto l = uniform!"[]"(0, (*rbuf).length);
             auto ub = cast(ubyte[])buffer;
             size_t i;
-            version (verbose)
+            version (modbus_verbose)
                 stderr.writefln("%s read %s", name, (*rbuf));
             for (i=0; i < ub.length; i++)
             {
@@ -238,7 +238,7 @@ version (unittest)
         override:
             MsgProcRes onReadHoldingRegisters(ushort start, ushort count)
             {
-                version (verbose)
+                version (modbus_verbose)
                 {
                     import std.stdio;
                     stderr.writeln("count check fails: ", count == 0 || count > 125);
