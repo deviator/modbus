@@ -81,7 +81,7 @@ public import std.socket : Address, InternetAddress, Internet6Address;
 version (Posix) public import std.socket : UnixAddress;
 
 /// Modbus with TCP backend based on TcpSocket from std.socket
-class ModbusTCP : Modbus
+class ModbusTCPMaster : ModbusMaster
 {
 protected:
     TcpSocket _socket;

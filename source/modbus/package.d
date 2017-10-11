@@ -7,7 +7,6 @@ import modbus.exception;
 import modbus.protocol;
 import modbus.facade;
 import modbus.connection;
-import modbus.backend.specrules;
 
 unittest
 {

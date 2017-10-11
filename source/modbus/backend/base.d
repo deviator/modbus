@@ -107,7 +107,6 @@ public:
 
     /++
         Params:
-            c = connection
             s = rules for pack N-byte data to sending package
             serviceData = size of CRC for RTU, protocol id for TCP etc
             deviceOffset = offset of device number (address) in message

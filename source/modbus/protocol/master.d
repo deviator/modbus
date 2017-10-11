@@ -19,7 +19,6 @@ class ModbusMaster : Modbus
             dev = modbus device address (number)
             fnc = function number
             bytes = expected response length in bytes
-
         Returns:
             result in big endian
      +/
@@ -84,13 +83,13 @@ class ModbusMaster : Modbus
         Params:
             dev = slave device number
             fnc = called function number
-            bytes = expected bytes for reading
+            bytes = expected response data bytes
             args = sending data
         Returns:
             result in big endian
      +/
     const(void)[] request(Args...)(ulong dev, ubyte fnc,
-                                        size_t bytes, Args args)
+                                   size_t bytes, Args args)
     {
         auto tmp = write(dev, fnc, args);
         void[MAX_BUFFER] writed = void;
@@ -104,7 +103,7 @@ class ModbusMaster : Modbus
         }
     }
 
-    /// function number 0x1 (1)
+    /// 01 (0x01) Read Coils
     const(BitArray) readCoils(ulong dev, ushort start, ushort cnt)
     {
         if (cnt >= 2000) throw modbusException("very big count");
@@ -112,7 +111,7 @@ class ModbusMaster : Modbus
                 dev, 1, 1+(cnt+7)/8, start, cnt)[1..$], cnt);
     }
 
-    /// function number 0x2 (2)
+    /// 02 (0x02) Read Discrete Inputs
     const(BitArray) readDiscreteInputs(ulong dev, ushort start, ushort cnt)
     {
         if (cnt >= 2000) throw modbusException("very big count");
@@ -122,7 +121,7 @@ class ModbusMaster : Modbus
 
     private alias be2na = bigEndianToNativeArr;
 
-    /++ function number 0x3 (3)
+    /++ 03 (0x03) Read Holding Registers
         Returns: data in native endian
      +/ 
     const(ushort)[] readHoldingRegisters(ulong dev, ushort start, ushort cnt)
@@ -132,7 +131,7 @@ class ModbusMaster : Modbus
                 dev, 3, 1+cnt*2, start, cnt)[1..$]);
     }
 
-    /++ function number 0x4 (4)
+    /++ 04 (0x04) Read Input Registers
         Returns: data in native endian
      +/ 
     const(ushort)[] readInputRegisters(ulong dev, ushort start, ushort cnt)
@@ -142,15 +141,15 @@ class ModbusMaster : Modbus
                 dev, 4, 1+cnt*2, start, cnt)[1..$]);
     }
 
-    /// function number 0x5 (5)
+    /// 05 (0x05) Write Single Coil
     void writeSingleCoil(ulong dev, ushort addr, bool val)
     { request(dev, 5, 4, addr, cast(ushort)(val ? 0xff00 : 0x0000)); }
 
-    /// function number 0x6 (6)
+    /// 06 (0x06) Write Single Register
     void writeSingleRegister(ulong dev, ushort addr, ushort value)
     { request(dev, 6, 4, addr, value); }
 
-    /// function number 0x10 (16)
+    /// 16 (0x10) Write Multiple Registers
     void writeMultipleRegisters(ulong dev, ushort addr, const(ushort)[] values)
     {
         if (values.length >= 125) throw modbusException("very big count");
