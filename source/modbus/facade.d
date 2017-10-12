@@ -24,6 +24,13 @@ version(Have_serialport)
     protected:
         SerialPortConnection spcom;
 
+        override @property
+        {
+            Duration writeStepPause() { return readStepPause; }
+            Duration readStepPause()
+            { return (cast(ulong)(1e7 * 10 / com.baudRate)).hnsecs; }
+        }
+
     public:
 
         ///

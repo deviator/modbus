@@ -45,6 +45,10 @@ protected:
         }
     }
 
+    ///
+    Duration writeStepPause() @property
+    { return (cast(ulong)(1e7 * 10 / 9600.0)).hnsecs; }
+
 public:
 
     ///
@@ -59,9 +63,6 @@ public:
     Duration writeTimeout=10.msecs;
     /// time for waiting message
     Duration readTimeout=1.seconds;
-
-    ///
-    Duration writeStepPause = (cast(ulong)(1e7 * 10 / 9600.0)).hnsecs;
 
     /++ Write to serial port
 

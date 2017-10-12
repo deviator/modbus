@@ -6,12 +6,13 @@ import modbus.protocol.base;
 ///
 class ModbusMaster : Modbus
 {
+    /// approx 1 byte (10 bits) on 9600 speed
+    protected Duration readStepPause() @property
+    { return (cast(ulong)(1e6/96.0)).hnsecs; }
+
     ///
     this(Connection con, Backend be, void delegate(Duration) sf=null)
     { super(con, be, sf); }
-
-    /// approx 1 byte (10 bits) on 9600 speed
-    Duration readStepPause = (cast(ulong)(1e6/96.0)).hnsecs;
 
     /++ Read from serial port
 
@@ -37,7 +38,7 @@ class ModbusMaster : Modbus
                 cnt += tmp.length;
                 if (tmp.length) step = 1;
                 auto res = be.parseMessage(buffer[0..cnt], msg);
-                with (Backend.ParseResult) FS: final switch(res)
+                FS: final switch(res) with (Backend.ParseResult)
                 {
                     case success:
                         if (cnt == mustRead) break RL;
@@ -92,13 +93,11 @@ class ModbusMaster : Modbus
                                    size_t bytes, Args args)
     {
         auto tmp = write(dev, fnc, args);
-        void[MAX_BUFFER] writed = void;
-        writed[0..tmp.length] = tmp[];
 
         try return read(dev, fnc, bytes);
         catch (ModbusDevException e)
         {
-            e.writed = writed[0..tmp.length];
+            e.writed = tmp[];
             throw e;
         }
     }
