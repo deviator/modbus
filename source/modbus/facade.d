@@ -28,7 +28,7 @@ version(Have_serialport)
         {
             Duration writeStepPause() { return readStepPause; }
             Duration readStepPause()
-            { return (cast(ulong)(1e7 * 10 / com.baudRate)).hnsecs; }
+            { return (cast(ulong)(1e8 / com.baudRate)).hnsecs; }
         }
 
     public:
@@ -57,16 +57,10 @@ version(Have_serialport)
         ///
         void flush()
         {
-            try
-            {
-                void[240] buf = void;
-                auto res = com.read(buf);
-                version (modbus_verbose)
-                    .info("flush ", cast(ubyte[])(res));
-            }
-            catch (TimeoutException e)
-                version (modbus_verbose)
-                    .trace("flust timeout");
+            void[240] buf = void;
+            auto res = com.read(buf);
+            version (modbus_verbose)
+                .info("flush ", cast(ubyte[])(res));
         }
 
         inout(SerialPort) com() inout @property { return spcom.sp; }
