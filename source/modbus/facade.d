@@ -9,12 +9,17 @@ version(Have_serialport)
     public import std.datetime : Duration, dur, hnsecs, nsecs, msecs, seconds;
     public import serialport;
 
+    ///
     class SerialPortConnection : Connection
     {
+        ///
         SerialPort sp;
+        ///
         this(SerialPort sp) { this.sp = sp; }
     override:
+        ///
         size_t write(const(void)[] msg) { return sp.write(msg); }
+        ///
         void[] read(void[] buffer) { return sp.read(buffer); }
     }
 
@@ -22,6 +27,7 @@ version(Have_serialport)
     class ModbusRTUMaster : ModbusMaster
     {
     protected:
+        ///
         SerialPortConnection spcom;
 
         override @property
