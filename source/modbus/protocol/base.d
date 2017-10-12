@@ -70,6 +70,8 @@ public:
             dev = modbus device address (number)
             fnc = function number
             args = writed data in native endian
+        Returns:
+            sended message
      +/
     const(void)[] write(Args...)(ulong dev, ubyte fnc, Args args)
     {
