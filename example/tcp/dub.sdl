@@ -1,3 +1,0 @@
-name "example_tcprid"
-versions "modbus_verbose"
-dependency "modbus" path="../../"

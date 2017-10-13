@@ -1,4 +1,0 @@
-name "example_dev"
-targetType "executable"
-dependency "modbus" path="../../"
-mainSourceFile "app.d"

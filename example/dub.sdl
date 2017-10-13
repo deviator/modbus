@@ -1,0 +1,30 @@
+name "example"
+
+targetType "executable"
+dependency "modbus" path="../"
+
+versions "modbus_verbose"
+
+configuration "rtu-master" {
+    targetName "example_master"
+    versions "rtu"
+    mainSourceFile "master.d"
+}
+
+configuration "rtu-slave" {
+    targetName "example_slave"
+    versions "rtu"
+    mainSourceFile "slave.d"
+}
+
+configuration "tcp-master" {
+    targetName "example_master"
+    versions "tcp"
+    mainSourceFile "master.d"
+}
+
+configuration "tcp-slave" {
+    targetName "example_slave"
+    versions "tcp"
+    mainSourceFile "slave.d"
+}

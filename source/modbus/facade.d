@@ -69,6 +69,7 @@ version(Have_serialport)
                 .info("flush ", cast(ubyte[])(res));
         }
 
+        ///
         inout(SerialPort) com() inout @property { return spcom.sp; }
 
         ///
@@ -107,8 +108,7 @@ protected:
         void[] read(void[] buffer)
         {
             const res = _socket.receive(buffer);
-            if (res == Socket.ERROR)
-                throw modbusException("error while receive data from tcp socket");
+            if (res == Socket.ERROR) return buffer[0..0];
             return buffer[0..res];
         }
     }
@@ -118,9 +118,58 @@ public:
     ///
     this(Address addr, SpecRules sr=null)
     {
-        _socket = new TcpSocket(addr);
-        _socket.blocking(false);
+        _socket = new TcpSocket();
+        _socket.connect(addr);
+        _socket.blocking = false;
         super(new C, new TCP(sr));
+    }
+
+    ///
+    inout(TcpSocket) socket() inout @property { return _socket; }
+
+    ~this() { _socket.close(); }
+}
+
+/// Modbus with TCP backend based on TcpSocket from std.socket
+class ModbusTCPSlave : ModbusSlave
+{
+protected:
+    TcpSocket _socket;
+    Socket cli;
+
+    class C : Connection
+    {
+    override:
+        size_t write(const(void)[] msg)
+        {
+            if (cli is null) return 0;
+            const res = cli.send(msg);
+            if (res == Socket.ERROR)
+                throw modbusException("error while send data to tcp socket");
+            return res;
+        }
+
+        void[] read(void[] buffer)
+        {
+            try cli = _socket.accept();
+            catch (Exception) return buffer[0..0];
+            if (cli is null) return buffer[0..0];
+            const res = cli.receive(buffer);
+            if (res == Socket.ERROR) return buffer[0..0];
+            return buffer[0..res];
+        }
+    }
+
+public:
+
+    ///
+    this(ulong dev, Address addr, SpecRules sr=null)
+    {
+        _socket = new TcpSocket();
+        _socket.blocking = false;
+        _socket.bind(addr);
+        _socket.listen(1);
+        super(dev, new C, new TCP(sr));
     }
 
     ///
