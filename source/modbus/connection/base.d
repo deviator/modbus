@@ -1,5 +1,5 @@
 ///
-module modbus.connection;
+module modbus.connection.base;
 
 /// Connection for backends
 interface Connection
