@@ -58,6 +58,9 @@ public:
     }
 
     ///
+    Backend backend() @property { return be; }
+
+    ///
     Duration writeTimeout=10.msecs;
     /// time for waiting message
     Duration readTimeout=1.seconds;
