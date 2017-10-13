@@ -27,7 +27,10 @@ int main(string[] args)
             return 1;
         }
 
-        auto mm = new ModbusTCPMaster(new InternetAddress(args[1], args[2].to!ushort));
+        import modbus.connection.tcp;
+        auto mm = new ModbusMaster(
+                    new MasterTcpConnection(
+                        new InternetAddress(args[1], args[2].to!ushort)));
     }
     else static assert(0, "unknown version");
 
