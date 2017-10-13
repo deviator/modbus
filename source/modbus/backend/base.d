@@ -14,9 +14,12 @@ public import modbus.backend.specrules;
 /// Message builder and parser
 interface Backend
 {
-    /++ work on preallocated buffer
+    /++ Full build message for sending
+
+        work on preallocated buffer
+
         Returns:
-            slice of preallocated buffer
+            slice of preallocated buffer with message
      +/
     final void[] buildMessage(Args...)(void[] buffer, ulong dev, ubyte fnc, Args args)
     {
@@ -55,16 +58,19 @@ interface Backend
 
     /++ Read data to temp message buffer
         Params:
-        data = parsing data buffer, CRC and etc
-        result = reference to result message
+            data = parsing data buffer, CRC and etc
+            result = reference to result message
+        Retruns:
+            parse result
         +/
     ParseResult parseMessage(const(void)[] data, ref Message result);
 
-    size_t minMsgLength() @property;
-    size_t notMessageDataLength() @property;
+    size_t aduLength(size_t dataBytes);
 
     final
     {
+        size_t minMsgLength() @property { return aduLength(1); }
+
         const(void)[] packT(T)(T value) { return sr.packT(value); }
         T unpackT(T)(const(void)[] data) { return sr.unpackT!T(data); }
     }
@@ -97,7 +103,6 @@ protected:
     enum functionTypeSize = 1;
     SpecRules specRules;
 
-    immutable size_t _minMsgLength;
     immutable size_t devOffset;
     immutable size_t serviceData;
 
@@ -116,7 +121,6 @@ public:
         this.specRules = s !is null ? s : new BasicSpecRules;
         this.serviceData = serviceData;
         this.devOffset = deviceOffset;
-        _minMsgLength = serviceData + sr.deviceTypeSize + functionTypeSize + ubyte.sizeof;
     }
 
     override
@@ -138,9 +142,13 @@ public:
             return ret;
         }
 
-        size_t minMsgLength() @property { return _minMsgLength; }
-        size_t notMessageDataLength() @property
-        { return serviceData + sr.deviceTypeSize + functionTypeSize; }
+        size_t aduLength(size_t dataBytes)
+        {
+            return serviceData +
+                   sr.deviceTypeSize +
+                   functionTypeSize +
+                   dataBytes; 
+        }
     }
 
 protected:

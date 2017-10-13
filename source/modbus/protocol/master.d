@@ -14,53 +14,54 @@ class ModbusMaster : Modbus
     this(Connection con, Backend be, void delegate(Duration) sf=null)
     { super(con, be, sf); }
 
-    /++ Read from serial port
+    /++ Read from connection
 
         Params:
             dev = modbus device address (number)
             fnc = function number
-            bytes = expected response length in bytes
+            bytes = expected response data length in bytes
         Returns:
             result in big endian
      +/
     const(void)[] read(ulong dev, ubyte fnc, size_t bytes)
     {
-        size_t mustRead = bytes + be.notMessageDataLength;
+        size_t mustRead = be.aduLength(bytes);
         size_t cnt = 0;
         Message msg;
         try
         {
-            auto step = be.minMsgLength;
             auto dt = StopWatch(AutoStart.yes);
-            RL: while (cnt <= mustRead)
+            RL: while (cnt < mustRead)
             {
-                auto tmp = con.read(buffer[cnt..cnt+step]);
-                cnt += tmp.length;
-                if (tmp.length) step = 1;
-                auto res = be.parseMessage(buffer[0..cnt], msg);
-                FS: final switch(res) with (Backend.ParseResult)
+                auto tmp = con.read(buffer[cnt..mustRead]);
+                if (tmp.length)
                 {
-                    case success:
-                        if (cnt == mustRead) break RL;
-                        else throw readDataLengthException(dev,
-                                                fnc, mustRead, cnt);
-                    case errorMsg: break RL;
-                    case uncomplete: break FS;
-                    case checkFail:
-                        if (cnt == mustRead)
-                            throw checkFailException(dev, fnc);
-                        else break FS;
+                    cnt += tmp.length;
+                    auto res = be.parseMessage(buffer[0..cnt], msg);
+                    FS: final switch(res) with (Backend.ParseResult)
+                    {
+                        case success:
+                            if (cnt == mustRead) break RL;
+                            else throw readDataLengthException(dev,
+                                                    fnc, mustRead, cnt);
+                        case errorMsg: break RL;
+                        case uncomplete: break FS;
+                        case checkFail:
+                            if (cnt == mustRead)
+                                throw checkFailException(dev, fnc);
+                            else break FS;
+                    }
                 }
-                this.sleep(readStepPause);
                 if (dt.peek.to!Duration > readTimeout)
                     throw modbusTimeoutException("read", dev, fnc,
                                                     readTimeout);
+                this.sleep(readStepPause);
             }
 
             version (modbus_verbose)
-                if (res.dev != dev)
+                if (msg.dev != dev)
                     .warningf("receive from unexpected device "~
-                                "%d (expect %d)", res.dev, dev);
+                                "%d (expect %d)", msg.dev, dev);
             
             if (msg.fnc != fnc)
                 throw functionErrorException(dev, fnc, msg.fnc, 
