@@ -11,8 +11,7 @@ class ModbusMaster : Modbus
     { return (cast(ulong)(1e6/96.0)).hnsecs; }
 
     ///
-    this(Connection con, Backend be, void delegate(Duration) sf=null)
-    { super(con, be, sf); }
+    this(Backend be, void delegate(Duration) sf=null) { super(be, sf); }
 
     /++ Read from connection
 
@@ -33,7 +32,7 @@ class ModbusMaster : Modbus
             auto dt = StopWatch(AutoStart.yes);
             RL: while (cnt < mustRead)
             {
-                auto tmp = con.read(buffer[cnt..mustRead]);
+                auto tmp = be.connection.read(buffer[cnt..mustRead]);
                 if (tmp.length)
                 {
                     cnt += tmp.length;
@@ -126,7 +125,7 @@ class ModbusMaster : Modbus
      +/ 
     const(ushort)[] readHoldingRegisters(ulong dev, ushort start, ushort cnt)
     {
-        //if (cnt >= 125) throw modbusException("very big count");
+        if (cnt >= 125) throw modbusException("very big count");
         return be2na(cast(ushort[])request(
                 dev, 3, 1+cnt*2, start, cnt)[1..$]);
     }

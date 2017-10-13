@@ -61,11 +61,11 @@ import modbus;
 
 auto com = new MySerialPort();
 
-auto mbus = new ModbusMaster(new class Connection{
+auto mbus = new ModbusMaster(new RTU(new class Connection{
             override:
                 void write(const(void)[] msg) { com.write(msg); }
                 void[] read(void[] buffer) { return com.read(buffer); }
-            }, new RTU());
+            }));
 
 auto registers = mbus.readInputRegisters(device, address, count);
 ```

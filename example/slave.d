@@ -7,10 +7,7 @@ import core.thread;
 import modbus;
 import serialport;
 
-version (rtu) alias MSlave = ModbusSlave;
-version (tcp) alias MSlave = ModbusTCPSlave;
-
-class DevSim : MSlave
+class DevSim : ModbusSlave
 {
     ushort[] table;
 
@@ -21,8 +18,7 @@ class DevSim : MSlave
                  234, 345, 456, 567, 678];
     }
 
-    version (rtu) this(ulong dev, Connection con) { super(dev, con, new RTU); upd(); }
-    version (tcp) this(ulong dev, InternetAddress addr) { super(dev, addr); upd(); }
+    this(ulong dev, Backend be) { super(dev, be); upd(); }
 
 override:
     MsgProcRes onReadInputRegisters(ushort start, ushort count)
@@ -43,18 +39,18 @@ int main(string[] args)
     {
         pragma(msg, "RTU slave");
         if (args.length < 4) return fail("use: example_slave <COM> <BAUDRATE> <DEV>");
-        auto con = new SerialPortConnection(new SerialPort(args[1], args[2].to!uint));
+        auto be = new RTU(new SerialPortConnection(new SerialPort(args[1], args[2].to!uint)));
     }
     else version (tcp)
     {
         pragma(msg, "TCP slave");
         if (args.length < 4) return fail("use: example_slave <IP> <PORT> <DEV>");
-        auto con = new InternetAddress(args[1], args[2].to!ushort);
+        auto be = new TCP(new SlaveTcpConnection(new InternetAddress(args[1], args[2].to!ushort)));
     }
     else static assert(0, "unknown version");
 
     auto dev = args[3].to!uint;
-    auto ds = new DevSim(dev, con);
+    auto ds = new DevSim(dev, be);
 
     writefln("start");
     stdout.flush();

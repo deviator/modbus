@@ -14,6 +14,9 @@ public import modbus.backend.specrules;
 /// Message builder and parser
 interface Backend
 {
+    /// Returns abstract connection
+    Connection connection() @property;
+
     /++ Full build message for sending
 
         work on preallocated buffer
@@ -108,6 +111,8 @@ protected:
 
     override SpecRules sr() @property { return specRules; }
 
+    Connection con;
+
 public:
 
     /++
@@ -116,8 +121,10 @@ public:
             serviceData = size of CRC for RTU, protocol id for TCP etc
             deviceOffset = offset of device number (address) in message
      +/
-    this(SpecRules s, size_t serviceData, size_t deviceOffset)
+    this(Connection con, SpecRules s, size_t serviceData, size_t deviceOffset)
     {
+        import std.exception : enforce;
+        this.con = enforce(con, "connection is null");
         this.specRules = s !is null ? s : new BasicSpecRules;
         this.serviceData = serviceData;
         this.devOffset = deviceOffset;
@@ -125,6 +132,8 @@ public:
 
     override
     {
+        Connection connection() @property { return con; }
+
         ParseResult parseMessage(const(void)[] data, ref Message msg)
         {
             if (data.length < startDataSplit+1+endDataSplit)

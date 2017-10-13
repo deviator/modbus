@@ -111,11 +111,11 @@ unittest
 
     auto com = new ModbusEmulator(sr);
 
-    auto mbus = new ModbusMaster(new class Connection{
+    auto mbus = new ModbusMaster(new RTU(new class Connection{
         override:
             size_t write(const(void)[] msg) { return com.write(msg); }
             void[] read(void[] buffer) { return com.read(buffer); }
-        }, new RTU(sr));
+        }, sr));
 
     assert(mbus.readInputRegisters(70, 0, 1)[0] == 1234);
     import std.algorithm : equal;
@@ -187,7 +187,7 @@ version (unittest)
         {
             auto l = uniform!"[]"(0, msg.length);
             (*wbuf) ~= cast(ubyte[])(msg[0..l].dup);
-            slp(uniform(1, 20).usecs);
+            slp(uniform(1, 5).usecs);
             version (modbus_verbose)
                 stderr.writefln("%s write %s", name, (*wbuf));
             return l;
@@ -215,15 +215,13 @@ version (unittest)
 
     void testFunc(CT)()
     {
-        auto sr = new BasicSpecRules;
-        auto rtu = new RTU(sr);
-
         ubyte[] chA, chB;
 
         auto conA = new CT("A", chA, chB);
         auto conB = new CT("B", chB, chA);
 
-        auto mm = new ModbusMaster(conA, rtu);
+        auto sr = new BasicSpecRules;
+        auto mm = new ModbusMaster(new RTU(conA, sr));
         mm.readTimeout = 200.msecs;
 
         auto ms = new class ModbusSlave
@@ -231,7 +229,7 @@ version (unittest)
             ushort[] table;
             this()
             {
-                super(1, conB, rtu);
+                super(1, new RTU(conB, sr));
                 table = [123, 234, 345, 456, 567, 678, 789, 890, 901];
             }
         override:
@@ -245,6 +243,7 @@ version (unittest)
                 }
                 if (count == 0 || count > 125) return illegalDataValue;
                 if (start >= table.length) return illegalDataAddress;
+                if (start+count >= table.length) return illegalDataAddress;
 
                 return mpr(cast(ubyte)(count*2),
                     table[start..start+count]);
@@ -256,11 +255,11 @@ version (unittest)
         auto f1 = new Fiber(
         {
             bool thrown;
-            try mm.readHoldingRegisters(1, 3, 200);
+            try mm.readHoldingRegisters(1, 3, 100);
             catch (FunctionErrorException e)
             {
                 thrown = true;
-                assert(e.code == FunctionErrorCode.ILLEGAL_DATA_VALUE);
+                assert(e.code == FunctionErrorCode.ILLEGAL_DATA_ADDRESS);
             }
             assert (thrown);
 

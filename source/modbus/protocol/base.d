@@ -23,7 +23,6 @@ class Modbus
 protected:
     void[MAX_BUFFER] buffer;
 
-    Connection con;
     Backend be;
 
     void delegate(Duration) sleepFunc;
@@ -52,9 +51,8 @@ protected:
 public:
 
     ///
-    this(Connection con, Backend be, void delegate(Duration) sf=null)
+    this(Backend be, void delegate(Duration) sf=null)
     {
-        this.con = enforce(con, modbusException("connection is null"));
         this.be = enforce(be, modbusException("backend is null"));
         this.sleepFunc = sf;
     }
@@ -77,13 +75,13 @@ public:
     {
         auto buf = be.buildMessage(buffer, dev, fnc, args);
 
-        size_t cnt = con.write(buf);
+        size_t cnt = be.connection.write(buf);
         if (cnt == buf.length) return buf;
 
         auto dt = StopWatch(AutoStart.yes);
         while (cnt != buf.length)
         {
-            cnt += con.write(buf[cnt..$]);
+            cnt += be.connection.write(buf[cnt..$]);
             this.sleep(writeStepPause);
             if (dt.peek.to!Duration > writeTimeout)
                 throw modbusTimeoutException("write", dev, fnc, writeTimeout);
@@ -91,4 +89,7 @@ public:
 
         return buf;
     }
+
+    ///
+    void setSleepFunc(void delegate(Duration) f) { sleepFunc = f; }
 }

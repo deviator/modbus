@@ -16,10 +16,10 @@ protected:
 
 public:
     ///
-    this(ulong dev, Connection con, Backend be,
+    this(ulong dev, Backend be,
             void delegate(Duration) sf=null)
     {
-        super(con, be, sf);
+        super(be, sf);
         this.dev = dev;
         // approx 10 bytes (10 bits) on 9600 speed
         readTimeout = (cast(ulong)(1e7/96.0)).hnsecs;
@@ -136,7 +136,7 @@ public:
 
         do
         {
-            now_readed = con.read(buffer[readed..$]).length;
+            now_readed = be.connection.read(buffer[readed..$]).length;
             readed += now_readed;
         }
         while (now_readed);

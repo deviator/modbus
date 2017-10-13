@@ -11,7 +11,7 @@ protected:
 
 public:
     ///
-    this(SpecRules s=null) { super(s, lengthOfCRC, 0); }
+    this(Connection con, SpecRules s=null) { super(con, s, lengthOfCRC, 0); }
 
 protected override:
     void startMessage(void[] buf, ref size_t idx, ulong dev, ubyte fnc)
@@ -31,7 +31,7 @@ unittest
 
     void[100] data = void;
 
-    auto rtu = new RTU();
+    auto rtu = new RTU(new NullConnection);
     enum C1 = ushort(10100);
     enum C2 = ushort(12345);
     auto buf = cast(ubyte[])rtu.buildMessage(data, 1, 6, C1, C2);
