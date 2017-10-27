@@ -26,18 +26,44 @@ public:
         broadcastAnswer = false;
     }
 
-    import std.typecons;
+    ///
+    struct MsgProcRes
+    {
+        ///
+        void[] data;
+        ///
+        uint error;
+        ///
+        static auto fail(T)(T val) { return MsgProcRes(cast(void[])[val], true); }
+    }
 
-    alias MsgProcRes = Tuple!(uint, "error", void[], "data");
+    ///
+    alias Function = MsgProcRes delegate(Message);
 
-    enum void[] _iF = cast(void[])[FunctionErrorCode.ILLEGAL_FUNCTION];
-    enum void[] _iDV = cast(void[])[FunctionErrorCode.ILLEGAL_DATA_VALUE];
-    enum void[] _iDA = cast(void[])[FunctionErrorCode.ILLEGAL_DATA_ADDRESS];
-    enum MsgProcRes illegalFunction = MsgProcRes(true, _iF);
-    enum MsgProcRes illegalDataValue = MsgProcRes(true, _iDV);
-    enum MsgProcRes illegalDataAddress = MsgProcRes(true, _iDA);
+    ///
+    enum FuncCode : ubyte
+    {
+        readCoils             = 0x1,  /// function number 0x1 (1)
+        readDiscreteInputs    = 0x2,  /// function number 0x2 (2)
+        readHoldingRegisters  = 0x3,  /// function number 0x3 (3)
+        readInputRegisters    = 0x4,  /// 0x4 (4)
+        writeSingleCoil       = 0x5,  /// 0x5 (5)
+        writeSingleRegister   = 0x6,  /// 0x6 (6)
+        writeMultipleRegister = 0x10, /// 0x10 (16)
+    }
 
-    MsgProcRes mpr(Args...)(Args args)
+    ///
+    Function[ubyte] func;
+
+    ///
+    enum illegalFunction = MsgProcRes.fail(FunctionErrorCode.ILLEGAL_FUNCTION);
+    ///
+    enum illegalDataValue = MsgProcRes.fail(FunctionErrorCode.ILLEGAL_DATA_VALUE);
+    ///
+    enum illegalDataAddress = MsgProcRes.fail(FunctionErrorCode.ILLEGAL_DATA_ADDRESS);
+
+    ///
+    MsgProcRes packResult(Args...)(Args args)
     {
         void[] data;
         foreach (arg; args)
@@ -50,55 +76,32 @@ public:
             }
             else data ~= be.packT(arg);
         }
-        return MsgProcRes(false, data);
+        return MsgProcRes(data);
     }
 
-    /// function number 0x1 (1)
-    MsgProcRes onReadCoils(ushort start, ushort count)
-    { return illegalFunction; }
-    /// function number 0x2 (2)
-    MsgProcRes onReadDiscreteInputs(ushort start, ushort count)
-    { return illegalFunction; }
-    /// function number 0x3 (3)
-    MsgProcRes onReadHoldingRegisters(ushort start, ushort count)
-    { return illegalFunction; }
-    /// function number 0x4 (4)
-    MsgProcRes onReadInputRegisters(ushort start, ushort count)
-    { return illegalFunction; }
-
-    /// function number 0x5 (5)
-    MsgProcRes onWriteSingleCoil(ushort addr, ushort val)
-    { return illegalFunction; }
-    /// function number 0x6 (6)
-    MsgProcRes onWriteSingleRegister(ushort addr, ushort val)
-    { return illegalFunction; }
-
-    /// function number 0x10 (16)
-    MsgProcRes onWriteMultipleRegister(ushort addr, ushort[] vals)
-    { return illegalFunction; }
-
+    ///
     MsgProcRes onMessage(Message m)
     {
-        enum us = ushort.sizeof;
-        auto one = be.unpackT!ushort(m.data[0..us]);
-        auto two = be.unpackT!ushort(m.data[us..us*2]);
-        switch (m.fnc)
-        {
-            case 1: return onReadCoils(one, two);
-            case 2: return onReadDiscreteInputs(one, two);
-            case 3: return onReadHoldingRegisters(one, two);
-            case 4: return onReadInputRegisters(one, two);
-            case 5: return onWriteSingleCoil(one, two);
-            case 6: return onWriteSingleRegister(one, two);
-            case 16:
-                auto data = cast(ushort[])(m.data[us*2+1..$]);
-                foreach (ref el; data)
-                    el = be.unpackT!ushort(cast(void[])[el]);
-                return onWriteMultipleRegister(one, data);
-            default: return illegalFunction;
-        }
+        if (m.fnc in func) return func[m.fnc](m);
+        return illegalFunction;
+
+        //enum us = ushort.sizeof;
+        //auto one = be.unpackT!ushort(m.data[0..us]);
+        //auto two = be.unpackT!ushort(m.data[us..us*2]);
+        //switch (m.fnc)
+        //{
+        //    case 1: return onReadCoils(one, two);
+        //    ----------//----------
+        //    case 6: return onWriteSingleRegister(one, two);
+        //    case 16:
+        //        auto data = cast(ushort[])(m.data[us*2+1..$]);
+        //        foreach (ref el; data) el = be.unpackTT(el);
+        //        return onWriteMultipleRegister(one, data);
+        //    default: return illegalFunction;
+        //}
     }
 
+    ///
     void onMessageCallAndSendResult(ref const Message msg)
     {
         typeof(onMessage(msg)) res;
@@ -111,7 +114,7 @@ public:
             }
             else if (msg.dev != dev) return;
             else res = onMessage(msg);
-            write(dev, msg.fnc | (res.error ? 0x80 : 0), res.data);
+            this.write(dev, msg.fnc | (res.error ? 0x80 : 0), res.data);
         }
         catch (Throwable e)
         {
@@ -126,6 +129,7 @@ public:
     void iterate()
     {
         Message msg;
+
         if (dt.peek.to!Duration > readTimeout)
         {
             dt.stop();

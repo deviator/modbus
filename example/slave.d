@@ -18,17 +18,22 @@ class DevSim : ModbusSlave
                  234, 345, 456, 567, 678];
     }
 
-    this(ulong dev, Backend be) { super(dev, be); upd(); }
-
-override:
-    MsgProcRes onReadInputRegisters(ushort start, ushort count)
+    this(ulong dev, Backend be)
     {
-        if (count == 0 || count > 125) return illegalDataValue;
-        if (count >= table.length) return illegalDataValue;
-        if (start >= table.length) return illegalDataAddress;
+        super(dev, be);
+        upd();
+        func[FuncCode.readInputRegisters] = (m)
+        {
+            auto start = be.unpackT!ushort(m.data[0..2]);
+            auto count = be.unpackT!ushort(m.data[2..4]);
 
-        return mpr(cast(ubyte)(count*2),
-                   table[start..start+count]);
+            if (count == 0 || count > 125) return illegalDataValue;
+            if (count >= table.length) return illegalDataValue;
+            if (start >= table.length) return illegalDataAddress;
+
+            return packResult(cast(ubyte)(count*2),
+                    table[start..start+count]);
+        };
     }
 }
 
