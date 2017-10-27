@@ -76,6 +76,7 @@ interface Backend
 
         const(void)[] packT(T)(T value) { return sr.packT(value); }
         T unpackT(T)(const(void)[] data) { return sr.unpackT!T(data); }
+        T unpackTT(T)(T value) { return sr.unpackT!T(cast(void[])[value]); }
     }
 
 protected:
