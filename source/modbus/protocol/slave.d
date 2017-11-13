@@ -142,6 +142,12 @@ public:
         {
             now_readed = be.connection.read(buffer[readed..$]).length;
             readed += now_readed;
+            version (modbus_verbose) if (now_readed)
+            {
+                import std.stdio;
+                stderr.writeln(" now readed: ", now_readed);
+                stderr.writeln("full readed: ", readed);
+            }
         }
         while (now_readed);
 
