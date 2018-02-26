@@ -39,7 +39,7 @@ unittest
                                 nativeToBigEndian(C1) ~
                                 nativeToBigEndian(C2)));
 
-    auto crc = cast(ubyte[])crc16(buf[0..$-2]);
+    auto crc = cast(ubyte[])crc16(buf[0..$-2]).dup;
     assert(crc[0] == (cast(ubyte[])buf)[$-2]);
     assert(crc[1] == (cast(ubyte[])buf)[$-1]);
 }

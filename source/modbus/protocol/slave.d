@@ -2,6 +2,7 @@
 module modbus.protocol.slave;
 
 import modbus.protocol.base;
+public import modbus.types;
 
 ///
 class ModbusSlave : Modbus

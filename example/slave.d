@@ -1,7 +1,7 @@
 import std.stdio;
 import std.algorithm;
 import std.conv;
-import std.datetime;
+import std.datetime.stopwatch;
 import core.thread;
 
 import modbus;

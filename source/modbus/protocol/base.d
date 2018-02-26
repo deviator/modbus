@@ -3,7 +3,7 @@ module modbus.protocol.base;
 
 public import std.bitmanip : BitArray;
 public import std.exception : enforce;
-public import std.datetime;
+public import std.datetime.stopwatch;
 public import std.conv : to;
 
 version (modbus_verbose)

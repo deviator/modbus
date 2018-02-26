@@ -110,7 +110,7 @@ version (unittest)
     //version = modbus_verbose;
 
     import std.stdio;
-    import std.datetime;
+    import std.datetime.stopwatch;
     import std.range;
 
     class ConT1 : Connection
@@ -216,22 +216,24 @@ version (unittest)
                 super(1, new RTU(conB, sr));
                 writeTimeout = 100.msecs;
                 table = [123, 234, 345, 456, 567, 678, 789, 890, 901];
-            }
-        override:
-            MsgProcRes onReadHoldingRegisters(ushort start, ushort count)
-            {
-                version (modbus_verbose)
+                func[FuncCode.readHoldingRegisters] = (Message m)
                 {
-                    import std.stdio;
-                    stderr.writeln("count check fails: ", count == 0 || count > 125);
-                    stderr.writeln("start check fails: ", start >= table.length);
-                }
-                if (count == 0 || count > 125) return illegalDataValue;
-                if (start >= table.length) return illegalDataAddress;
-                if (start+count >= table.length) return illegalDataAddress;
+                    enum us = ushort.sizeof;
+                    auto start = be.unpackT!ushort(m.data[0..us]);
+                    auto count = be.unpackT!ushort(m.data[us..us*2]);
+                    version (modbus_verbose)
+                    {
+                        import std.stdio;
+                        stderr.writeln("count check fails: ", count == 0 || count > 125);
+                        stderr.writeln("start check fails: ", start >= table.length);
+                    }
+                    if (count == 0 || count > 125) return illegalDataValue;
+                    if (start >= table.length) return illegalDataAddress;
+                    if (start+count >= table.length) return illegalDataAddress;
 
-                return mpr(cast(ubyte)(count*2),
-                    table[start..start+count]);
+                    return packResult(cast(ubyte)(count*2),
+                        table[start..start+count]);
+                };
             }
         };
 
