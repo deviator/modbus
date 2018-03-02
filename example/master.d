@@ -17,6 +17,7 @@ int main(string[] args)
         }
 
         auto mm = new ModbusRTUMaster(args[1], args[2].to!uint);
+        mm.flush(); // in case if before start serial port has data
     }
     else version (tcp)
     {
