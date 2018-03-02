@@ -40,9 +40,12 @@ version(Have_serialport)
     public:
 
         ///
-        this(string port, uint baudrate, StopBits stopbits=StopBits.one,
-             Parity parity=Parity.none, DataBits databits=DataBits.data8)
-        { this(port, SerialPort.Config(baudrate, parity, databits, stopbits)); }
+        this(string port, uint baudrate, string mode)
+        { this(port, SerialPort.Config(baudrate).set(mode)); }
+
+        ///
+        this(string port, string mode)
+        { this(port, SerialPort.Config.parse(mode)); }
 
         ///
         this(string port, SerialPort.Config cfg, void delegate(Duration) sf=null,
