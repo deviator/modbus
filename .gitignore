@@ -9,6 +9,8 @@ doc
 *.dll
 *.obj
 *.exe
+.*.swp
+.*.swo
 *-test-*
 *~
 
