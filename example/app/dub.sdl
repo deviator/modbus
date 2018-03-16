@@ -1,7 +1,7 @@
 name "example"
 
 targetType "executable"
-dependency "modbus" path="../"
+dependency "modbus" path="../.."
 
 versions "modbus_verbose"
 

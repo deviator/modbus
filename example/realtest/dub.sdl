@@ -1,0 +1,5 @@
+name "realtest"
+
+targetName "real-test-modbus"
+
+dependency "modbus" path="../.."

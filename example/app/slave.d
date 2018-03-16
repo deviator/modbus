@@ -28,7 +28,7 @@ class DevSim : ModbusSlave
             auto count = be.unpackT!ushort(m.data[2..4]);
 
             if (count == 0 || count > 125) return illegalDataValue;
-            if (count >= table.length) return illegalDataValue;
+            if (count > table.length) return illegalDataValue;
             if (start >= table.length) return illegalDataAddress;
 
             return packResult(cast(ubyte)(count*2),
