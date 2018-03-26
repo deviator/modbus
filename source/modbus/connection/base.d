@@ -22,9 +22,12 @@ interface Connection
     void[] read(void[] buffer);
 }
 
-version (unittest) class NullConnection : Connection
+Connection nullConnection()
 {
-override:
-    size_t write(const(void)[] data) { return 0; }
-    void[] read(void[] buffer) { return buffer[0..0]; }
+    return new class Connection
+    {
+    override:
+        size_t write(const(void)[] data) { return 0; }
+        void[] read(void[] buffer) { return buffer[0..0]; }
+    };
 }

@@ -51,7 +51,7 @@ unittest
 {
     import std.array : appender;
     void[100] data = void;
-    auto tcp = new TCP(new NullConnection);
+    auto tcp = new TCP(nullConnection);
     int xx = 123;
     auto res = cast(ubyte[])tcp.buildMessage(data, 1, 2, xx);
     assert (res == [0,0, 0,0, 0,6, 1, 2, 0,123,0,0]);

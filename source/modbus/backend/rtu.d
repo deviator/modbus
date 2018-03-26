@@ -31,7 +31,7 @@ unittest
 
     void[100] data = void;
 
-    auto rtu = new RTU(new NullConnection);
+    auto rtu = new RTU(nullConnection);
     enum C1 = ushort(10100);
     enum C2 = ushort(12345);
     auto buf = cast(ubyte[])rtu.buildMessage(data, 1, 6, C1, C2);

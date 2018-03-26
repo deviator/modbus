@@ -56,8 +56,9 @@ class FSlave : Fiber
 
         mb.func[ModbusRTUSlave.FuncCode.readInputRegisters] = (m)
         {
-            auto start = mb.backend.unpackT!ushort(m.data[0..2]);
-            auto count = mb.backend.unpackT!ushort(m.data[2..4]);
+            auto ftus = mb.parseMessageFirstTwoUshorts(m);
+            auto start = ftus[0];
+            auto count = ftus[1];
 
             if (count == 0 || count > 125) return mb.illegalDataValue;
             if (count > table.length) return mb.illegalDataValue;
