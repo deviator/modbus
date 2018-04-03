@@ -84,8 +84,8 @@ version(Have_serialport)
         inout(SerialPort) com() inout @property { return spcom.sp; }
     }
     
-    /// ModbusSlave with RTU backend
-    class ModbusRTUSlave : ModbusSlave
+    /// ModbusSingleSlave with RTU backend
+    class ModbusSingleRTUSlave : ModbusSingleSlave
     {
     protected:
         ///
@@ -125,7 +125,55 @@ version(Have_serialport)
                 SpecRules sr=null)
         {
             spcom = new SerialPortConnection(sp);
-            super(dev, new RTU(spcom, sr));
+            super(dev, new RTU(spcom, sr), sf);
+        }
+
+        ///
+        inout(SerialPort) com() inout @property { return spcom.sp; }
+    }
+
+    /// ModbusMultiSlave with RTU backend
+    class ModbusMultiRTUSlave : ModbusMultiSlave
+    {
+    protected:
+        ///
+        SerialPortConnection spcom;
+
+        override Duration writeStepPause() @property
+        { return (cast(ulong)(1e8 / com.baudRate)).hnsecs; }
+
+    public:
+
+        ///
+        this(string port, uint baudrate, string mode="8N1")
+        { this(port, SerialPort.Config(baudrate).set(mode)); }
+
+        ///
+        this(string port, string mode)
+        { this(port, SerialPort.Config.parse(mode)); }
+
+        ///
+        this(string port, uint baudrate, void delegate(Duration) sf,
+                SpecRules sr=null)
+        { this(port, SerialPort.Config(baudrate), sf, sr); }
+
+        ///
+        this(string port, SerialPort.Config cfg,
+                void delegate(Duration) sf=null, SpecRules sr=null)
+        {
+            this(new SerialPort(port, cfg), sf, sr);
+            _manageSerialPort = true;
+        }
+
+        private bool _manageSerialPort;
+        bool manageSerialPort() const @property { return _manageSerialPort; }
+
+        ///
+        this(SerialPort sp, void delegate(Duration) sf=null,
+                SpecRules sr=null)
+        {
+            spcom = new SerialPortConnection(sp);
+            super(new RTU(spcom, sr), sf);
         }
 
         ///
@@ -258,7 +306,7 @@ version (unittest)
         mm.writeTimeout = 100.msecs;
         mm.readTimeout = 200.msecs;
 
-        auto ms = new class ModbusSlave
+        auto ms = new class ModbusSingleSlave
         {
             ushort[] table;
             this()

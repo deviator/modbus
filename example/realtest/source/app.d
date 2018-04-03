@@ -2,6 +2,7 @@ import std.stdio;
 
 import socat;
 import simpletest;
+import multidevtest;
 
 void main()
 {
@@ -9,6 +10,7 @@ void main()
     auto e = runSocat();
 
     simpleTest(e.ports);
+    multiDevTest(e.ports);
 
     writeln("=== finish realtest ===");
 }

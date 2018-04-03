@@ -45,16 +45,16 @@ class FSlave : Fiber
 {
     Model model;
 
-    ModbusRTUSlave mb;
+    ModbusSingleRTUSlave mb;
 
     ushort[] table() @property
     { return cast(ushort[])cast(void[])[model]; }
 
     this(ulong dev, string port, string mode)
     {
-        mb = new ModbusRTUSlave(dev, port, mode);
+        mb = new ModbusSingleRTUSlave(dev, port, mode);
 
-        mb.func[ModbusRTUSlave.FuncCode.readInputRegisters] = (m)
+        mb.func[ModbusSingleRTUSlave.FuncCode.readInputRegisters] = (m)
         {
             auto ftus = mb.parseMessageFirstTwoUshorts(m);
             auto start = ftus[0];

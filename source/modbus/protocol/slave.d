@@ -200,7 +200,7 @@ public:
         add process funcs (use modbus methods for parsing packs)
         profit
  +/
-class ModbusSlave : ModbusSlaveBase
+class ModbusSingleSlave : ModbusSlaveBase
 {
 protected:
     ///
@@ -258,12 +258,40 @@ public:
     }
 }
 
+///
+deprecated("use ModbusSingleSlave")
+alias ModbusSlave = ModbusSingleSlave;
+
 unittest
 {
-    auto mb = new ModbusSlave(1, new RTU(nullConnection));
+    auto mb = new ModbusSingleSlave(1, new RTU(nullConnection));
     import std.range;
     import std.algorithm;
     mb.packResult(iota(cast(ubyte)10));
     
-    assert(equal((cast(ubyte[])mb.mBuffer)[0..10], iota(10)));
+    assert(equal((cast(ubyte[])(mb.mBuffer[]))[0..10], iota(10)));
+}
+
+/++ Multiple devices modbus slave
+ +/
+class ModbusMultiSlave : ModbusSlaveBase
+{
+protected:
+    override Reaction checkDeviceNumber(ulong dn)
+    { return dn in func ? Reaction.processAndAnswer : Reaction.none; }
+
+public:
+    ///
+    this(Backend be, void delegate(Duration) sf=null) { super(be, sf); }
+
+    ///
+    Function[ubyte][ulong] func;
+
+    override MsgProcRes onMessage(ref const Message m)
+    {
+        // onMessage not call if reaction is none
+        if (m.fnc in func[m.dev])
+            return func[m.dev][m.fnc](m);
+        return illegalFunction;
+    }
 }
