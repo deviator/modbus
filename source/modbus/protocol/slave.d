@@ -95,6 +95,8 @@ public:
     enum illegalDataValue = failMsgProcRes(FunctionErrorCode.ILLEGAL_DATA_VALUE);
     ///
     enum illegalDataAddress = failMsgProcRes(FunctionErrorCode.ILLEGAL_DATA_ADDRESS);
+    ///
+    enum slaveDeviceFailure = failMsgProcRes(FunctionErrorCode.SLAVE_DEVICE_FAILURE);
 
     ///
     alias Function = MsgProcRes delegate(Message);
