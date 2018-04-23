@@ -53,6 +53,7 @@ protected:
     /// process message and send result if needed
     void processMessage(ref const Message msg)
     {
+        import std.experimental.logger;
         MsgProcRes res;
         try
         {
@@ -62,9 +63,13 @@ protected:
             if (pm == Reaction.processAndAnswer)
                 this.write(msg.dev, msg.fnc | (res.error ? 0x80 : 0), res.data);
         }
+        catch (SlaveFuncProcessException e)
+        {
+            errorf("%s", e);
+            this.write(msg.dev, msg.fnc | 0x80, e.code);
+        }
         catch (Throwable e)
         {
-            import std.experimental.logger;
             errorf("%s", e);
             this.write(msg.dev, msg.fnc | 0x80,
                     FunctionErrorCode.SLAVE_DEVICE_FAILURE);

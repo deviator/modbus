@@ -122,6 +122,20 @@ class FunctionErrorException : ModbusDevException
     }
 }
 
+/// use this exception for throwing errors in modbus slave
+class SlaveFuncProcessException : ModbusIOException
+{
+    ///
+    FunctionErrorCode code;
+
+    ///
+    this(ulong dev, ubyte fnc, FunctionErrorCode c)
+    {
+        code = c;
+        super("error while process message", dev, fnc);
+    }
+}
+
 ///
 class ReadDataLengthException : ModbusDevException
 {
@@ -161,6 +175,7 @@ private version (modbus_use_prealloc_exceptions)
         auto preallocCheckFailException = new CheckFailException(0, 0);
         auto preallocReadDataLengthException = new ReadDataLengthException(0,0,0,0);
         auto preallocFunctionErrorException = new FunctionErrorException(0,0,0,0);
+        auto preallocSlaveFuncProcessException = new SlaveFuncProcessException(0, 0, FunctionErrorCode.SLAVE_DEVICE_FAILURE);
     }
 }
 
@@ -243,4 +258,16 @@ ReadDataLengthException readDataLengthException()(ulong dev, ubyte fnc, size_t e
         return preallocReadDataLengthException;
     }
     else return new ReadDataLengthException(dev, fnc, exp, res, file, line);
+}
+
+SlaveFuncProcessException slaveFuncProcessException()(ulong dev, ubyte fnc, FunctionErrorCode code)
+{
+    version (modbus_use_prealloc_exceptions)
+    {
+        preallocSlaveFuncProcessException.dev = dev;
+        preallocSlaveFuncProcessException.fnc = fnc;
+        preallocSlaveFuncProcessException.code = code;
+        return preallocSlaveFuncProcessException;
+    }
+    else return new SlaveFuncProcessException(dev, fnc, code);
 }
