@@ -56,7 +56,7 @@ version(Have_serialport)
         this(string port, SerialPort.Config cfg,
                 void delegate(Duration) sf=null, SpecRules sr=null)
         {
-            this(new SerialPort(port, cfg), sf, sr);
+            this(new SerialPortNonBlk(port, cfg), sf, sr);
             _manageSerialPort = true;
         }
 
@@ -113,7 +113,7 @@ version(Have_serialport)
         this(ulong dev, string port, SerialPort.Config cfg,
                 void delegate(Duration) sf=null, SpecRules sr=null)
         {
-            this(dev, new SerialPort(port, cfg), sf, sr);
+            this(dev, new SerialPortNonBlk(port, cfg), sf, sr);
             _manageSerialPort = true;
         }
 
@@ -161,7 +161,7 @@ version(Have_serialport)
         this(string port, SerialPort.Config cfg,
                 void delegate(Duration) sf=null, SpecRules sr=null)
         {
-            this(new SerialPort(port, cfg), sf, sr);
+            this(new SerialPortNonBlk(port, cfg), sf, sr);
             _manageSerialPort = true;
         }
 
