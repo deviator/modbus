@@ -4,7 +4,9 @@ module modbus.exception;
 import std.string : format;
 import std.datetime : Duration;
 
-enum MINIMUM_MODBUS_MSG_LENGTH = 5;
+import modbus.types;
+
+enum MINIMUM_MODBUS_MSG_LENGTH = 4;
 
 ///
 class ModbusException : Exception
@@ -30,21 +32,6 @@ class ModbusIOException : ModbusException
         super(msg, file, line);
         this.dev = dev;
         this.fnc = fnc;
-    }
-}
-
-///
-class ModbusTimeoutException : ModbusIOException
-{
-    ///
-    Duration dur;
-    ///
-    this(string msg, ulong dev, ubyte fnc, Duration dur,
-            string file=__FILE__, size_t line=__LINE__)
-        @nogc @safe pure nothrow
-    {
-        super(msg, dev, fnc, file, line);
-        this.dur = dur;
     }
 }
 
@@ -152,26 +139,11 @@ class ReadDataLengthException : ModbusDevException
     }
 }
 
-///
-enum FunctionErrorCode : ubyte
-{
-    ILLEGAL_FUNCTION     = 1, /// 1
-    ILLEGAL_DATA_ADDRESS = 2, /// 2
-    ILLEGAL_DATA_VALUE   = 3, /// 3
-    SLAVE_DEVICE_FAILURE = 4, /// 4
-    ACKNOWLEDGE          = 5, /// 5
-    SLAVE_DEVICE_BUSY    = 6, /// 6
-    MEMORY_PARITY_ERROR  = 8, /// 8
-    GATEWAY_PATH_UNAVAILABLE = 0xA, /// 0xA
-    GATEWAY_TARGET_DEVICE_FAILED_TO_RESPOND = 0xB, /// 0xB
-}
-
 private version (modbus_use_prealloc_exceptions)
 {
     __gshared
     {
         auto preallocModbusException = new ModbusException("many args");
-        auto preallocModbusTimeoutException = new ModbusTimeoutException("many args", Duration.init);
         auto preallocCheckFailException = new CheckFailException(0, 0);
         auto preallocReadDataLengthException = new ReadDataLengthException(0,0,0,0);
         auto preallocFunctionErrorException = new FunctionErrorException(0,0,0,0);
@@ -190,22 +162,6 @@ ModbusException modbusException()(string msg, string file=__FILE__, size_t line=
         return preallocModbusException;
     }
     else return new ModbusException(msg, file, line);
-}
-
-/// Returns: preallocated exception with new values of fields
-ModbusTimeoutException modbusTimeoutException()(string msg, ulong dev, ubyte fnc, Duration dur, string file=__FILE__, size_t line=__LINE__)
-{
-    version (modbus_use_prealloc_exceptions)
-    {
-        preallocModbusTimeoutException.msg = msg;
-        preallocModbusTimeoutException.dev = dev;
-        preallocModbusTimeoutException.fnc = fnc;
-        preallocModbusTimeoutException.dur = dur;
-        preallocModbusTimeoutException.file = file;
-        preallocModbusTimeoutException.line = line;
-        return preallocModbusTimeoutException;
-    }
-    else return new ModbusTimeoutException(msg, dev, fnc, dur, file, line);
 }
 
 /// Returns: preallocated exception with new values of fields

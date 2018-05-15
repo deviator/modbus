@@ -11,13 +11,13 @@ protected:
 
 public:
     ///
-    this(Connection con, SpecRules s=null) { super(con, s, lengthOfCRC, 0); }
+    this(SpecRules s=null) { super(s, lengthOfCRC, 0); }
 
 protected override:
     void startMessage(void[] buf, ref size_t idx, ulong dev, ubyte fnc)
     { appendDF(buf, idx, dev, fnc); }
 
-    void completeMessage(void[] buf, ref size_t idx)
+    void finalizeMessage(void[] buf, ref size_t idx)
     { appendBytes(buf, idx, cast(void[])crc16(buf[0..idx])); }
 
     bool check(const(void)[] data) { return checkCRC(data); }

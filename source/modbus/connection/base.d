@@ -1,9 +1,11 @@
 ///
 module modbus.connection.base;
 
+import serialport;
+
 public import std.datetime : Duration;
 
-/// Connection for backends
+/// Connection
 interface Connection
 {
     @property
@@ -17,6 +19,8 @@ interface Connection
         ///
         void writeTimeout(Duration);
     }
+
+    alias CanRead = SerialPort.CanRead;
 
     /++ Write data to connection
 
@@ -33,7 +37,27 @@ interface Connection
         Returns:
             slice of buffer with readed data
      +/
-    void[] read(void[] buffer);
+    void[] read(void[] buffer, CanRead cr=CanRead.allOrNothing);
+}
+
+///
+abstract class AbstractConnection : Connection
+{
+protected:
+    Duration _rtm = 10.msecs, _wtm = 10.msecs;
+
+public:
+
+    @property override
+    {
+        Duration readTimeout() { return _rtm; }
+        Duration writeTimeout() { return _wtm; }
+        void readTimeout(Duration d) { _rtm = d; }
+        void writeTimeout(Duration d) { _wtm = d; }
+    }
+
+    abstract void write(const(void)[] data);
+    abstract void[] read(void[] buffer, CanRead cr=CanRead.allOrNothing);
 }
 
 version (unittest)
@@ -53,39 +77,35 @@ Connection nullConnection()
     override:
         @property
         {
-            ///
             Duration readTimeout() { return Duration.zero; }
-            ///
             Duration writeTimeout() { return Duration.zero; }
-            ///
             void readTimeout(Duration) {}
-            ///
             void writeTimeout(Duration) {}
         }
         void write(const(void)[] data) { }
-        void[] read(void[] buffer) { return buffer[0..0]; }
+        void[] read(void[] buffer, CanRead cr=CanRead.allOrNothing) { return buffer[0..0]; }
     };
 }
 
-class FTCon : Connection
+/++ Circle buffer, for fibers only
+ +/
+class VirtualConnection : AbstractConnection
 {
     import std.datetime.stopwatch;
     import core.thread : Fiber;
     import serialport.exception : TimeoutException;
     import std.exception : enforce;
     import std.algorithm : min;
-
     import std.stdio;
 
-    string name;
+    protected size_t* _start, _end;
 
-    Duration _rtm = 10.msecs, _wtm = 10.msecs;
+    string name;
 
     void[] buffer;
 
     size_t start() @property { return *_start; }
     size_t end() @property { return *_end; }
-    size_t* _start, _end;
 
     this(void[] buffer, size_t* start, size_t* end, string name)
     {
@@ -102,13 +122,6 @@ class FTCon : Connection
     }
 
 override:
-    @property
-    {
-        Duration readTimeout() { return _rtm; }
-        Duration writeTimeout() { return _wtm; }
-        void readTimeout(Duration d) { _rtm = d; }
-        void writeTimeout(Duration d) { _wtm = d; }
-    }
 
     void write(const(void)[] data)
     {
@@ -135,12 +148,12 @@ override:
         return;
     }
 
-    void[] read(void[] ret)
+    void[] read(void[] ext, CanRead cr=CanRead.allOrNothing)
     {
         auto sw = StopWatch(AutoStart.yes);
         auto fb = enforce(Fiber.getThis, "must run in fiber");
 
-        auto uret = cast(ubyte[])ret;
+        auto uret = cast(ubyte[])ext;
         auto ubuf = cast(ubyte[])buffer;
 
         size_t n = start;
@@ -150,14 +163,23 @@ override:
             while (n == end)
             {
                 if (sw.peek > _rtm)
-                    throw new TimeoutException(name);
+                {
+                    if (cr == CanRead.allOrNothing)
+                        throw new TimeoutException(name);
+                    else if (cr == CanRead.anyNonZero)
+                    {
+                        if (i != 0) return ext[0..i];
+                        throw new TimeoutException(name);
+                    }
+                    else return ext[0..i];
+                }
                 fb.yield();
             }
             n = (start + i) % bl;
             uret[i] = ubuf[n];
         }
         *_start = (n+1) % bl;
-        return ret[];
+        return ext[];
     }
 }
 
@@ -184,7 +206,7 @@ unittest
         return gba.data().idup;
     }
 
-    auto c = new FTCon(buffer, &start, &end, "test");
+    auto c = new VirtualConnection(buffer, &start, &end, "test");
 
     void fnc()
     {
@@ -208,12 +230,13 @@ unittest
     }
 }
 
-Connection[2] fiberTestConnection(size_t bufSize, string prefix)
+///
+Connection[2] virtualPipeConnection(size_t bufSize, string prefix)
 {
     void[] buf = new void[](bufSize);
     auto p = new size_t[](2);
-    return [new FTCon(buf, &p[0], &p[1], prefix ~ "A"),
-            new FTCon(buf, &p[0], &p[1], prefix ~ "B")];
+    return [new VirtualConnection(buf, &p[0], &p[1], prefix ~ "A"),
+            new VirtualConnection(buf, &p[0], &p[1], prefix ~ "B")];
 }
 
 unittest
@@ -221,7 +244,7 @@ unittest
     enum data = "1qazxsw23edcv";
     void[data.length] buf = void;
 
-    auto cc = fiberTestConnection(77, "test");
+    auto cc = virtualPipeConnection(77, "test");
 
     import std.array;
 
@@ -229,7 +252,7 @@ unittest
 
     string getBuffer()
     {
-        auto ftcon = enforce(cast(FTCon)cc[0]);
+        auto ftcon = enforce(cast(VirtualConnection)cc[0]);
         auto buf = cast(char[])ftcon.buffer;
         auto s = ftcon.start;
         auto e = ftcon.end;

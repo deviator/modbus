@@ -6,12 +6,8 @@ import modbus.protocol.base;
 ///
 class ModbusMaster : Modbus
 {
-    /// approx 1 byte (10 bits) on 9600 speed
-    protected Duration readStepPause() @property
-    { return (cast(ulong)(1e6/96.0)).hnsecs; }
-
     ///
-    this(Backend be, void delegate(Duration) sf=null) { super(be, sf); }
+    this(Backend be, Connection con) { super(be, con); }
 
     /++ Read from connection
 
@@ -19,64 +15,48 @@ class ModbusMaster : Modbus
             dev = modbus device address (number)
             fnc = function number
             bytes = expected response data length in bytes
+                    if < 0 any bytes count can be received
         Returns:
             result in big endian
      +/
-    const(void)[] read(ulong dev, ubyte fnc, size_t bytes)
+    const(void)[] read(ulong dev, ubyte fnc, ptrdiff_t bytes)
     {
-        size_t mustRead = be.aduLength(bytes);
-        size_t cnt = 0;
+        size_t minRead = be.aduLength;
+        size_t mustRead;
+
+        if (bytes >= 0)
+            mustRead = be.aduLength(bytes);
+        else
+            mustRead = buffer.length;
+
         Message msg;
-        try
+
+        con.read(buffer[0..minRead]);
+        if (be.ParseResult.success != be.parseMessage(buffer[0..minRead], msg))
         {
-            auto dt = StopWatch(AutoStart.yes);
-            RL: while (cnt < mustRead)
-            {
-                auto tmp = be.connection.read(buffer[cnt..mustRead]);
-                if (tmp.length)
-                {
-                    cnt += tmp.length;
-                    auto res = be.parseMessage(buffer[0..cnt], msg);
-                    FS: final switch(res) with (Backend.ParseResult)
-                    {
-                        case success:
-                            if (cnt == mustRead) break RL;
-                            else throw readDataLengthException(dev,
-                                                    fnc, mustRead, cnt);
-                        case errorMsg: break RL;
-                        case uncomplete: break FS;
-                        case checkFail:
-                            if (cnt == mustRead)
-                                throw checkFailException(dev, fnc);
-                            else break FS;
-                    }
-                }
-                if (dt.peek.to!Duration > readTimeout)
-                    throw modbusTimeoutException("read", dev, fnc,
-                                                    readTimeout);
-                this.sleep(readStepPause);
-            }
+            if (minRead == mustRead)
+                throw checkFailException(dev, fnc);
 
-            version (modbus_verbose)
-                if (msg.dev != dev)
-                    .warningf("receive from unexpected device "~
-                                "%d (expect %d)", msg.dev, dev);
-            
-            if (msg.fnc != fnc)
-                throw functionErrorException(dev, fnc, msg.fnc, 
-                                        (cast(ubyte[])msg.data)[0]);
+            con.read(buffer[minRead..mustRead], bytes < 0 ?
+                                   con.CanRead.anyNonZero : con.CanRead.allOrNothing);
+            if (be.ParseResult.success != be.parseMessage(buffer[0..mustRead], msg))
+                throw checkFailException(dev, fnc);
+        } // else it's error message
 
-            if (msg.data.length != bytes)
-                throw readDataLengthException(dev, fnc, bytes,
-                                                msg.data.length);
+        version (modbus_verbose)
+            if (msg.dev != dev)
+                .warningf("receive from unexpected device "~
+                            "%d (expect %d)", msg.dev, dev);
+        
+        if (msg.fnc != fnc)
+            throw functionErrorException(dev, fnc, msg.fnc, 
+                                    (cast(ubyte[])msg.data)[0]);
 
-            return msg.data;
-        }
-        catch (ModbusDevException e)
-        {
-            e.readed = buffer[0..cnt];
-            throw e;
-        }
+        if (bytes > 0 && msg.data.length != bytes)
+            throw readDataLengthException(dev, fnc, bytes,
+                                            msg.data.length);
+
+        return msg.data;
     }
 
     /++ Write and read to modbus
@@ -90,7 +70,7 @@ class ModbusMaster : Modbus
             result in big endian
      +/
     const(void)[] request(Args...)(ulong dev, ubyte fnc,
-                                   size_t bytes, Args args)
+                                   ptrdiff_t bytes, Args args)
     {
         auto tmp = write(dev, fnc, args);
 
@@ -107,7 +87,9 @@ class ModbusMaster : Modbus
     {
         if (cnt >= 2000) throw modbusException("very big count");
         return const(BitArray)(cast(void[])request(
-                dev, 1, 1+(cnt+7)/8, start, cnt)[1..$], cnt);
+                dev, FunctionCode.readCoils,
+                1+(cnt+7)/8, start, cnt)[1..$],
+                cnt);
     }
 
     /// 02 (0x02) Read Discrete Inputs
@@ -115,7 +97,9 @@ class ModbusMaster : Modbus
     {
         if (cnt >= 2000) throw modbusException("very big count");
         return const(BitArray)(cast(void[])request(
-                dev, 2, 1+(cnt+7)/8, start, cnt)[1..$], cnt);
+                dev, FunctionCode.readDiscreteInputs,
+                1+(cnt+7)/8, start, cnt)[1..$],
+                cnt);
     }
 
     private alias be2na = bigEndianToNativeArr;
@@ -127,7 +111,7 @@ class ModbusMaster : Modbus
     {
         if (cnt >= 125) throw modbusException("very big count");
         return be2na(cast(ushort[])request(
-                dev, 3, 1+cnt*2, start, cnt)[1..$]);
+                dev, FunctionCode.readHoldingRegisters, 1+cnt*2, start, cnt)[1..$]);
     }
 
     /++ 04 (0x04) Read Input Registers
@@ -137,22 +121,32 @@ class ModbusMaster : Modbus
     {
         if (cnt >= 125) throw modbusException("very big count");
         return be2na(cast(ushort[])request(
-                dev, 4, 1+cnt*2, start, cnt)[1..$]);
+                dev, FunctionCode.readInputRegisters, 1+cnt*2, start, cnt)[1..$]);
     }
 
     /// 05 (0x05) Write Single Coil
     void writeSingleCoil(ulong dev, ushort addr, bool val)
-    { request(dev, 5, 4, addr, cast(ushort)(val ? 0xff00 : 0x0000)); }
-
+    {
+        request(dev, FunctionCode.writeSingleCoil, 4, addr,
+                cast(ushort)(val ? 0xff00 : 0x0000));
+    }
     /// 06 (0x06) Write Single Register
     void writeSingleRegister(ulong dev, ushort addr, ushort value)
-    { request(dev, 6, 4, addr, value); }
+    { request(dev, FunctionCode.writeSingleRegister, 4, addr, value); }
+
+    // TODO
+    /// 15 (0x0F) Write Multiple Coils
+    //void writeMultipleCoils(ulong dev, ushort addr, const BitArray arr)
+    //{
+    //    request(dev, FunctionCode.writeMultipleCoils, );
+    //}
 
     /// 16 (0x10) Write Multiple Registers
     void writeMultipleRegisters(ulong dev, ushort addr, const(ushort)[] values)
     {
         if (values.length >= 125) throw modbusException("very big count");
-        request(dev, 16, 4, addr, cast(ushort)values.length,
+        request(dev, FunctionCode.writeMultipleRegisters,
+                    4, addr, cast(ushort)values.length,
                     cast(byte)(values.length*2), values);
     }
 }
@@ -192,7 +186,7 @@ unittest
             auto ubmsg = cast(const(ubyte)[])msg;
             ulong dev;
             ubyte fnc;
-            sr.peekDF(ubmsg, dev, fnc);
+            sr.unpackkDF(ubmsg, dev, fnc);
             ubmsg = ubmsg[sr.deviceTypeSize+1..$];
 
             if (dev !in regs) return msg.length;
@@ -263,7 +257,8 @@ unittest
     auto mbus = new ModbusMaster(new RTU(new class Connection{
         override:
             size_t write(const(void)[] msg) { return com.write(msg); }
-            void[] read(void[] buffer) { return com.read(buffer); }
+            void[] read(void[] buffer, CanRead cr=CanRead.allOrNothing)
+            { return com.read(buffer); }
         }, sr));
 
     assert(mbus.readInputRegisters(70, 0, 1)[0] == 1234);

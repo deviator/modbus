@@ -5,14 +5,8 @@ authors "Oleg Butko (deviator)"
 copyright "Copyright © 2017"
 license "MIT"
 
-configuration "serialport" {
-    targetType "library"
-    dependency "serialport" version="~>1.0.0"
-}
-
-configuration "custom" {
-    targetType "library"
-}
+targetType "library"
+dependency "serialport" version="~>2.0.0"
 
 //versions "modbus_verbose"
 //versions "modbus_use_prealloc_exceptions"

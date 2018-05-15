@@ -14,80 +14,84 @@ public import modbus.backend.specrules;
 /// Message builder and parser
 interface Backend
 {
-    /// Returns abstract connection
-    Connection connection() @property;
-
     /++ Full build message for sending
 
         work on preallocated buffer
 
+        Params:
+            buf = preallocated buffer
+            dev = modbus device number
+            fnc = function number
+            args = message data
+
         Returns:
             slice of preallocated buffer with message
      +/
-    final void[] buildMessage(Args...)(void[] buffer, ulong dev, ubyte fnc, Args args)
+    void[] buildMessage(Args...)(void[] buf, ulong dev, ubyte fnc, Args args)
     {
-        size_t idx = 0;
-        startMessage(buffer, idx, dev, fnc);
-        void _append(T)(T val)
+        size_t idx;
+        startMessage(buf, idx, dev, fnc);
+        recursiveAppend(buf, idx, args);
+        finalizeMessage(buf, idx);
+        return buf[0..idx];
+    }
+
+    ///
+    void recursiveAppend(Args...)(void[] buf, ref size_t idx, Args args)
+        if (Args.length >= 1)
+    {
+        static if (Args.length == 1)
         {
+            auto val = args[0];
             static if (isArray!T)
             {
                 import std.range : ElementType;
                 static if (is(Unqual!(ElementType!T) == void))
-                    appendBytes(buffer, idx, val);
-                else foreach (e; val) _append(e);
+                    appendBytes(buf, idx, val);
+                else foreach (e; val) recursiveAppend(buf, idx, e);
             }
             else
             {
                 static if (is(T == struct))
-                    foreach (v; val.tupleof) _append(v);
-                else static if (isNumeric!T) append(buffer, idx, val);
+                    foreach (v; val.tupleof) recursiveAppend(buf, idx, v);
+                else static if (isNumeric!T) append(buf, idx, val);
                 else static assert(0, "unsupported type " ~ T.stringof);
             }
         }
-        foreach (arg; args) _append(arg);
-        completeMessage(buffer, idx);
-        return buffer[0..idx];
+        else static foreach (arg; args) recursiveAppend(buf, idx, arg);
     }
 
     ///
     enum ParseResult
     {
         success, ///
-        errorMsg, /// error message (fnc >= 0x80)
-        uncomplete, ///
-        checkFail /// for RTU check CRC fail
+        incomplete, ///
+        checkFails ///
     }
 
     /++ Read data to temp message buffer
         Params:
             data = parsing data buffer, CRC and etc
             result = reference to result message
-        Retruns:
-            parse result
         +/
     ParseResult parseMessage(const(void)[] data, ref Message result);
 
-    size_t aduLength(size_t dataBytes);
+    ///
+    size_t aduLength(size_t dataBytes=0);
 
-    final
-    {
-        size_t minMsgLength() @property { return aduLength(1); }
-
-        const(void)[] packT(T)(T value) { return sr.packT(value); }
-        T unpackT(T)(const(void)[] data) { return sr.unpackT!T(data); }
-        T unpackTT(T)(T value) { return sr.unpackT!T(cast(void[])[value]); }
-    }
+    const(void)[] packT(T)(T value) { return sr.packT(value); }
+    T unpackT(T)(const(void)[] data) { return sr.unpackT!T(data); }
+    T unpackTT(T)(T value) { return sr.unpackT!T(cast(void[])[value]); }
 
 protected:
 
     SpecRules sr() @property;
 
     /// start building message
-    void startMessage(void[] buf, ref size_t idx, ulong dev, ubyte func);
+    void startMessage(void[] buf, ref size_t idx, ulong dev, ubyte fnc);
 
     /// append data to message buffer
-    final void append(T)(void[] buf, ref size_t idx, T val)
+    void append(T)(void[] buf, ref size_t idx, T val)
         if (isNumeric!T && !is(T == real))
     {
         union cst { T value; void[T.sizeof] data; }
@@ -95,8 +99,8 @@ protected:
     }
     /// ditto
     void appendBytes(void[] buf, ref size_t idx, const(void)[]);
-    /// finalize message
-    void completeMessage(void[] buf, ref size_t idx);
+    ///
+    void finalizeMessage(void[] buf, ref size_t idx);
 }
 
 /++ Basic functionality of Backend
@@ -112,8 +116,6 @@ protected:
 
     override SpecRules sr() @property { return specRules; }
 
-    Connection con;
-
 public:
 
     /++
@@ -122,10 +124,9 @@ public:
             serviceData = size of CRC for RTU, protocol id for TCP etc
             deviceOffset = offset of device number (address) in message
      +/
-    this(Connection con, SpecRules s, size_t serviceData, size_t deviceOffset)
+    this(SpecRules s, size_t serviceData, size_t deviceOffset)
     {
         import std.exception : enforce;
-        this.con = enforce(con, "connection is null");
         this.specRules = s !is null ? s : new BasicSpecRules;
         this.serviceData = serviceData;
         this.devOffset = deviceOffset;
@@ -133,26 +134,19 @@ public:
 
     override
     {
-        Connection connection() @property { return con; }
-
         ParseResult parseMessage(const(void)[] data, ref Message msg)
         {
-            if (data.length < startDataSplit+1+endDataSplit)
-                return ParseResult.uncomplete;
-            if (auto err = sr.peekDF(data[devOffset..$], msg.dev, msg.fnc))
-                return ParseResult.uncomplete;
-            auto ret = ParseResult.success;
-            if (msg.fnc >= 0x80)
-            {
-                data = data[0..startDataSplit+1+endDataSplit];
-                ret = ParseResult.errorMsg;
-            }
+            if (data.length < aduLength)
+                return ParseResult.incomplete;
+            if (auto err = sr.unpackDF(data[devOffset..$], msg.dev, msg.fnc))
+                return ParseResult.incomplete;
+            if (!check(data)) return ParseResult.checkFails;
+
             msg.data = data[startDataSplit..$-endDataSplit];
-            if (!check(data)) return ParseResult.checkFail;
-            return ret;
+            return ParseResult.success;
         }
 
-        size_t aduLength(size_t dataBytes)
+        size_t aduLength(size_t dataBytes=0)
         {
             return serviceData +
                    sr.deviceTypeSize +
@@ -180,7 +174,7 @@ protected:
     abstract
     {
         void startMessage(void[] buf, ref size_t idx, ulong dev, ubyte func);
-        void completeMessage(void[] buf, ref size_t idx);
+        void finalizeMessage(void[] buf, ref size_t idx);
 
         bool check(const(void)[] data);
         size_t endDataSplit() @property;

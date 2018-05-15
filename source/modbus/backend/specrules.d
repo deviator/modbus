@@ -14,7 +14,7 @@ pure @nogc:
     ///
     const(void)[] packDF(ulong dev, ubyte fnc);
     ///
-    int peekDF(const(void)[] buf, ref ulong dev, ref ubyte fnc);
+    int unpackDF(const(void)[] buf, ref ulong dev, ref ubyte fnc);
 
     ///
     const(void)[] pack(const(void)[]);
@@ -32,28 +32,29 @@ pure @nogc:
 ///
 class BasicSpecRules : SpecRules
 {
+    import std.bitmanip : write;
+    import std.bitmanip : read;
+
+@nogc:
+
     protected ubyte[16] buffer;
 
-    private const(void)[] typedPack(T)(T v) @nogc
+    private const(void)[] typedPack(T)(T val)
     {
-        import std.bitmanip : write;
-
         static if (T.sizeof <= ushort.sizeof)
-            buffer[].write(v, 0);
+            buffer[].write(val, 0);
         else
         {
             size_t i;
-            foreach (part; cast(ushort[])((cast(void[T.sizeof])(cast(T[1])[v]))[]))
-                buffer[].write(part, &i);
+            auto data = cast(ushort[])((cast(void*)&val)[0..T.sizeof]);
+            foreach (part; data) buffer[].write(part, &i);
         }
 
         return buffer[0..T.sizeof];
     }
 
-    private const(void)[] typedUnpack(T)(const(void)[] data) @nogc 
+    private const(void)[] typedUnpack(T)(const(void)[] data)
     {
-        import std.bitmanip : read;
-        import std.algorithm : min;
         import std.range : chunks, enumerate;
 
         static if (T.sizeof == ubyte.sizeof) return data;
@@ -72,19 +73,18 @@ class BasicSpecRules : SpecRules
     import std.meta : AliasSeq;
     alias Types = AliasSeq!(byte,short,int,long);
 
-public pure override @nogc:
+public pure override:
     @property size_t deviceTypeSize() { return 1; }
 
     const(void)[] packDF(ulong dev, ubyte fnc) 
     {
-        import std.bitmanip : write;
         assert(dev <= 255, "device number can't be more 255");
         buffer[].write(cast(ubyte)dev, 0);
         buffer[].write(fnc, 1);
-        return buffer[0..2];
+        return buffer[0..deviceTypeSize+1];
     }
 
-    int peekDF(const(void)[] vbuf, ref ulong dev, ref ubyte fnc)
+    int unpackDF(const(void)[] vbuf, ref ulong dev, ref ubyte fnc)
     {
         import std.bitmanip : peek;
         auto buf = cast(const(ubyte)[])vbuf;

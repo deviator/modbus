@@ -25,12 +25,12 @@ protected override:
         append(buf, idx, zero);
         // protocol id
         append(buf, idx, zero);
-        // packet length (change in completeMessage)
+        // packet length (change in finalizeMessage)
         append(buf, idx, zero);
         appendDF(buf, idx, dev, fnc);
     }
 
-    void completeMessage(void[] buf, ref size_t idx)
+    void finalizeMessage(void[] buf, ref size_t idx)
     {
         auto dsize = cast(ushort)(idx - packetServiceData);
         size_t plo = packetLengthOffset;

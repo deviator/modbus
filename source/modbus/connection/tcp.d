@@ -2,74 +2,153 @@
 module modbus.connection.tcp;
 
 import std.socket;
+import std.datetime.stopwatch;
+import std.conv : to;
 public import std.socket : Address, InternetAddress, Internet6Address;
 version (Posix) public import std.socket : UnixAddress;
 
 import modbus.exception;
 import modbus.connection.base;
 
-///
-class MasterTcpConnection : Connection
+abstract class TcpConnectionBase : AbstractConnection
 {
-    TcpSocket socket;
+protected:
+    TcpSocket _socket;
 
-    ///
-    this(Address addr)
-    {
-        socket = new TcpSocket();
-        socket.connect(addr);
-        socket.blocking = false;
-    }
+    void delegate(Duration) sleepFunc;
 
-override:
-    size_t write(const(void)[] msg)
+    ptrdiff_t m_write(Socket s, const(void)[] buf)
     {
-        const res = socket.send(msg);
+        const res = s.send(buf);
         if (res == Socket.ERROR)
             throw modbusException("error while send data to tcp socket");
         return res;
     }
 
-    void[] read(void[] buffer)
+    void[] m_read(Socket s, void[] buf)
     {
-        const res = socket.receive(buffer);
-        if (res == Socket.ERROR) return buffer[0..0];
-        return buffer[0..res];
+        const res = s.receive(buf);
+        if (res == Socket.ERROR) return buf[0..0];
+        return buf[0..res];
+    }
+
+    void delegate(Duration) sleepFunc;
+
+public:
+
+    TcpSocket socket() @property { return _socket; }
+}
+
+///
+class MasterTcpConnection : TcpConnectionBase
+{
+    ///
+    this(Address addr, void delegate(Duration) sleepFunc=null)
+    {
+        _socket = new TcpSocket();
+
+        if (sleepFunc !is null)
+        {
+            this.sleepFunc = sleepFunc;
+            _socket.blocking = false;
+        }
+        else _socket.blocking = true;
+
+        _socket.connect(addr);
+    }
+
+override:
+
+    void write(const(void)[] msg)
+    {
+        if (sleepFunc is null) return m_write(_socket, msg);
+
+        size_t written;
+        auto sw = StopWatch(AutoStart.yes);
+        while (sw.peek < _wtm)
+        {
+            written += m_write(_socket, msg[written..$]);
+            if (written == msg.length) return;
+            sleepFunc();
+        }
+        throw new TimeoutException(socket.to!string);
+    }
+
+    void[] read(void[] buf, CanRead cr=CanRead.allOrNothing)
+    {
+        /// TODO REWORK FOR CAN_READ FLAG
+        if (sleepFunc is null) return m_read(_socket, buf);
+
+        size_t readed;
+        auto sw = StopWatch(AutoStart.yes);
+        while (sw.peek < _rtm)
+        {
+            readed += m_read(_socket, buf[readed..$]);
+            if (readed == buf.length) return buf[];
+            sleepFunc();
+        }
+        throw new TimeoutException(socket.to!string);
     }
 }
 
 ///
 class SlaveTcpConnection : Connection
 {
-    TcpSocket socket;
     Socket cli;
 
     ///
-    this(Address addr)
+    this(Address addr, void delegate(Duration) sleepFunc)
     {
-        socket = new TcpSocket();
-        socket.blocking = false;
-        socket.bind(addr);
-        socket.listen(1);
+        _socket = new TcpSocket();
+
+        if (sleepFunc !is null)
+        {
+            this.sleepFunc = sleepFunc;
+            _socket.blocking = false;
+
+        }
+        else _socket.blocking = true;
+
+        _socket.bind(addr);
+        _socket.listen(1);
     }
 
 override:
-    size_t write(const(void)[] msg)
+    void write(const(void)[] msg)
     {
-        if (cli is null) return 0;
-        const res = cli.send(msg);
-        if (res == Socket.ERROR)
-            throw modbusException("error while send data to tcp socket");
-        return res;
+        if (cli is null)
+            throw modbusException("no client connected");
+
+        if (sleepFunc is null) return m_write(cli, msg);
+
+        size_t written;
+        auto sw = StopWatch(AutoStart.yes);
+        while (sw.peek < _wtm)
+        {
+            written += m_write(cli, msg[written..$]);
+            if (written == msg.length) return;
+            sleepFunc();
+        }
+        throw new TimeoutException(socket.to!string);
     }
 
-    void[] read(void[] buffer)
+    void[] read(void[] buf, CanRead cr=CanRead.allOrNothing)
     {
+        /// TODO REWORK FOR CAN_READ FLAG
         try cli = socket.accept();
-        catch (Exception) return buffer[0..0];
-        if (cli is null) return buffer[0..0];
-        const res = cli.receive(buffer);
-        if (res == Socket.ERROR) return buffer[0..0];
-        return buffer[0..res];
+        catch (Exception) return buf[0..0];
+        if (cli is null) return ber[0..0];
+
+        if (sleepFunc is null) return m_read(cli, buf);
+
+        size_t readed;
+        auto sw = StopWatch(AutoStart.yes);
+        while (sw.peek < _rtm)
+        {
+            readed += m_read(_socket, buf[readed..$]);
+            if (readed == buf.length) return buf[];
+            sleepFunc();
+        }
+        return buf[0..res];
     }
 }

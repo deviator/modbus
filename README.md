@@ -1,7 +1,7 @@
 ### Modbus protocol
 
 Library provides modbus wrapper over RTU and TCP connections.
-By default using [`serialport`](https://github.com/deviator/serialport) package.
+Using [`serialport`](https://github.com/deviator/serialport) for RTU.
 
 Simple usage:
 
@@ -44,28 +44,3 @@ writeln(mbs.readInputRegisters(1, 17, 1));
 
 `ModbusRTUMaster` and `ModbusTCPMaster` close serial port and
 socket in destructors.
-
-You can configure library with custom serialport realization.
-For this past `subConfiguration "modbus" "custom"` to your `dub.sdl`
-or `"subConfigurations": { "modbus": "custom" }` to your `dub.json`.
-In this case you can't use `ModbusRTUMaster`.
-`ModbusMaster` don't manage your serial port or tcp connection.
-They uses through simple interfaces with `read` and `write` methods and
-you must close opened connections by yourself.
-
-Example:
-
-```d
-import myserialport;
-import modbus;
-
-auto com = new MySerialPort();
-
-auto mbus = new ModbusMaster(new RTU(new class Connection{
-            override:
-                void write(const(void)[] msg) { com.write(msg); }
-                void[] read(void[] buffer) { return com.read(buffer); }
-            }));
-
-auto registers = mbus.readInputRegisters(device, address, count);
-```

@@ -4,185 +4,166 @@ module modbus.facade;
 import modbus.backend;
 import modbus.protocol;
 
-version(Have_serialport)
-{
-    public import std.datetime : Duration, dur, hnsecs, nsecs, msecs, seconds;
-    public import serialport;
-
-    ///
-    class SerialPortConnection : Connection
-    {
-        ///
-        SerialPort sp;
-        ///
-        this(SerialPort sp) { this.sp = sp; }
-    override:
-        ///
-        size_t write(const(void)[] msg) { return sp.write(msg); }
-        ///
-        void[] read(void[] buffer) { return sp.read(buffer); }
-    }
-
-    /// ModbusMaster with RTU backend
-    class ModbusRTUMaster : ModbusMaster
-    {
-    protected:
-        ///
-        SerialPortConnection spcom;
-
-        override @property
-        {
-            Duration writeStepPause() { return readStepPause; }
-            Duration readStepPause()
-            { return (cast(ulong)(1e8 / com.baudRate)).hnsecs; }
-        }
-
-    public:
-
-        ///
-        this(string port, uint baudrate, string mode="8N1")
-        { this(port, SerialPort.Config(baudrate).set(mode)); }
-
-        ///
-        this(string port, string mode)
-        { this(port, SerialPort.Config.parse(mode)); }
-
-        ///
-        this(string port, uint baudrate, void delegate(Duration) sf,
-                SpecRules sr=null)
-        { this(port, SerialPort.Config(baudrate), sf, sr); }
-
-        ///
-        this(string port, SerialPort.Config cfg,
-                void delegate(Duration) sf=null, SpecRules sr=null)
-        {
-            this(new SerialPortNonBlk(port, cfg), sf, sr);
-            _manageSerialPort = true;
-        }
-
-        private bool _manageSerialPort;
-        bool manageSerialPort() const @property { return _manageSerialPort; }
-
-        ///
-        this(SerialPort sp, void delegate(Duration) sf=null,
-                SpecRules sr=null)
-        {
-            spcom = new SerialPortConnection(sp);
-            super(new RTU(spcom, sr), sf);
-        }
-
-        ///
-        void flush()
-        {
-            void[240] buf = void;
-            auto res = com.read(buf);
-            version (modbus_verbose)
-                .info("flush ", cast(ubyte[])(res));
-        }
-
-        ///
-        inout(SerialPort) com() inout @property { return spcom.sp; }
-    }
-    
-    /// ModbusSingleSlave with RTU backend
-    class ModbusSingleRTUSlave : ModbusSingleSlave
-    {
-    protected:
-        ///
-        SerialPortConnection spcom;
-
-        override Duration writeStepPause() @property
-        { return (cast(ulong)(1e8 / com.baudRate)).hnsecs; }
-
-    public:
-
-        ///
-        this(ulong dev, string port, uint baudrate, string mode="8N1")
-        { this(dev, port, SerialPort.Config(baudrate).set(mode)); }
-
-        ///
-        this(ulong dev, string port, string mode)
-        { this(dev, port, SerialPort.Config.parse(mode)); }
-
-        ///
-        this(ulong dev, string port, uint baudrate,
-                void delegate(Duration) sf, SpecRules sr=null)
-        { this(dev, port, SerialPort.Config(baudrate), sf, sr); }
-
-        ///
-        this(ulong dev, string port, SerialPort.Config cfg,
-                void delegate(Duration) sf=null, SpecRules sr=null)
-        {
-            this(dev, new SerialPortNonBlk(port, cfg), sf, sr);
-            _manageSerialPort = true;
-        }
-
-        private bool _manageSerialPort;
-        bool manageSerialPort() const @property { return _manageSerialPort; }
-
-        ///
-        this(ulong dev, SerialPort sp, void delegate(Duration) sf=null,
-                SpecRules sr=null)
-        {
-            spcom = new SerialPortConnection(sp);
-            super(dev, new RTU(spcom, sr), sf);
-        }
-
-        ///
-        inout(SerialPort) com() inout @property { return spcom.sp; }
-    }
-
-    /// ModbusMultiSlave with RTU backend
-    class ModbusMultiRTUSlave : ModbusMultiSlave
-    {
-    protected:
-        ///
-        SerialPortConnection spcom;
-
-        override Duration writeStepPause() @property
-        { return (cast(ulong)(1e8 / com.baudRate)).hnsecs; }
-
-    public:
-
-        ///
-        this(string port, uint baudrate, string mode="8N1")
-        { this(port, SerialPort.Config(baudrate).set(mode)); }
-
-        ///
-        this(string port, string mode)
-        { this(port, SerialPort.Config.parse(mode)); }
-
-        ///
-        this(string port, uint baudrate, void delegate(Duration) sf,
-                SpecRules sr=null)
-        { this(port, SerialPort.Config(baudrate), sf, sr); }
-
-        ///
-        this(string port, SerialPort.Config cfg,
-                void delegate(Duration) sf=null, SpecRules sr=null)
-        {
-            this(new SerialPortNonBlk(port, cfg), sf, sr);
-            _manageSerialPort = true;
-        }
-
-        private bool _manageSerialPort;
-        bool manageSerialPort() const @property { return _manageSerialPort; }
-
-        ///
-        this(SerialPort sp, void delegate(Duration) sf=null,
-                SpecRules sr=null)
-        {
-            spcom = new SerialPortConnection(sp);
-            super(new RTU(spcom, sr), sf);
-        }
-
-        ///
-        inout(SerialPort) com() inout @property { return spcom.sp; }
-    }
-}
+public import std.datetime : Duration, dur, hnsecs, nsecs, msecs, seconds;
 
 import modbus.connection.tcp;
 import std.socket : TcpSocket;
+
+import modbus.connection.rtu;
+
+/// ModbusMaster with RTU backend
+class ModbusRTUMaster : ModbusMaster
+{
+protected:
+    ///
+    SerialPortConnection spcom;
+
+    override @property
+    {
+        Duration writeStepPause() { return readStepPause; }
+        Duration readStepPause()
+        { return (cast(ulong)(1e8 / com.baudRate)).hnsecs; }
+    }
+
+public:
+
+    ///
+    this(string port, uint baudrate, string mode="8N1")
+    { this(port, SPConfig(baudrate).set(mode)); }
+
+    ///
+    this(string port, string mode)
+    { this(port, SPConfig.parse(mode)); }
+
+    ///
+    this(string port, uint baudrate, void delegate(Duration) sf,
+            SpecRules sr=null)
+    { this(port, SPConfig(baudrate), sf, sr); }
+
+    ///
+    this(string port, SPConfig cfg,
+            void delegate(Duration) sf=null, SpecRules sr=null)
+    {
+        this(new SerialPortTm(port, cfg), sf, sr);
+        _manageSerialPort = true;
+    }
+
+    private bool _manageSerialPort;
+    bool manageSerialPort() const @property { return _manageSerialPort; }
+
+    ///
+    this(SerialPortTm sp, void delegate(Duration) sf=null,
+            SpecRules sr=null)
+    {
+        spcom = new SerialPortConnection(sp);
+        super(new RTU(spcom, sr), sf);
+    }
+
+    ///
+    void flush()
+    {
+        com.flush();
+    }
+
+    ///
+    inout(SerialPort) com() inout @property { return spcom.sp; }
+}
+
+/// ModbusSingleSlave with RTU backend
+class ModbusSingleRTUSlave : ModbusSingleSlave
+{
+protected:
+    ///
+    SerialPortConnection spcom;
+
+    override Duration writeStepPause() @property
+    { return (cast(ulong)(1e8 / com.baudRate)).hnsecs; }
+
+public:
+
+    ///
+    this(ulong dev, string port, uint baudrate, string mode="8N1")
+    { this(dev, port, SerialPort.Config(baudrate).set(mode)); }
+
+    ///
+    this(ulong dev, string port, string mode)
+    { this(dev, port, SerialPort.Config.parse(mode)); }
+
+    ///
+    this(ulong dev, string port, uint baudrate,
+            void delegate(Duration) sf, SpecRules sr=null)
+    { this(dev, port, SerialPort.Config(baudrate), sf, sr); }
+
+    ///
+    this(ulong dev, string port, SerialPort.Config cfg,
+            void delegate(Duration) sf=null, SpecRules sr=null)
+    {
+        this(dev, new SerialPortNonBlk(port, cfg), sf, sr);
+        _manageSerialPort = true;
+    }
+
+    private bool _manageSerialPort;
+    bool manageSerialPort() const @property { return _manageSerialPort; }
+
+    ///
+    this(ulong dev, SerialPort sp, void delegate(Duration) sf=null,
+            SpecRules sr=null)
+    {
+        spcom = new SerialPortConnection(sp);
+        super(dev, new RTU(spcom, sr), sf);
+    }
+
+    ///
+    inout(SerialPort) com() inout @property { return spcom.sp; }
+}
+
+/// ModbusMultiSlave with RTU backend
+class ModbusMultiRTUSlave : ModbusMultiSlave
+{
+protected:
+    ///
+    SerialPortConnection spcom;
+
+    override Duration writeStepPause() @property
+    { return (cast(ulong)(1e8 / com.baudRate)).hnsecs; }
+
+public:
+
+    ///
+    this(string port, uint baudrate, string mode="8N1")
+    { this(port, SerialPort.Config(baudrate).set(mode)); }
+
+    ///
+    this(string port, string mode)
+    { this(port, SerialPort.Config.parse(mode)); }
+
+    ///
+    this(string port, uint baudrate, void delegate(Duration) sf,
+            SpecRules sr=null)
+    { this(port, SerialPort.Config(baudrate), sf, sr); }
+
+    ///
+    this(string port, SerialPort.Config cfg,
+            void delegate(Duration) sf=null, SpecRules sr=null)
+    {
+        this(new SerialPortNonBlk(port, cfg), sf, sr);
+        _manageSerialPort = true;
+    }
+
+    private bool _manageSerialPort;
+    bool manageSerialPort() const @property { return _manageSerialPort; }
+
+    ///
+    this(SerialPort sp, void delegate(Duration) sf=null,
+            SpecRules sr=null)
+    {
+        spcom = new SerialPortConnection(sp);
+        super(new RTU(spcom, sr), sf);
+    }
+
+    ///
+    inout(SerialPort) com() inout @property { return spcom.sp; }
+}
 
 /// Modbus with TCP backend based on TcpSocket from std.socket
 class ModbusTCPMaster : ModbusMaster
