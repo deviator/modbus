@@ -42,6 +42,7 @@ interface Backend
     {
         static if (Args.length == 1)
         {
+            alias T = Args[0];
             auto val = args[0];
             static if (isArray!T)
             {

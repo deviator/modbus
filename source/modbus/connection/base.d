@@ -1,7 +1,9 @@
 ///
 module modbus.connection.base;
 
-import serialport;
+public import serialport.exception;
+
+static import serialport.base;
 
 public import std.datetime : Duration;
 
@@ -20,7 +22,7 @@ interface Connection
         void writeTimeout(Duration);
     }
 
-    alias CanRead = SerialPort.CanRead;
+    alias CanRead = serialport.base.SerialPort.CanRead;
 
     /++ Write data to connection
 
@@ -158,7 +160,7 @@ override:
 
         size_t n = start;
         const bl = buffer.length;
-        foreach (i; 0 .. ret.length)
+        foreach (i; 0 .. uret.length)
         {
             while (n == end)
             {

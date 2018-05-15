@@ -14,8 +14,8 @@ protected:
     enum packetLengthOffset = ushort.sizeof * 2;
 public:
     ///
-    this(Connection con, SpecRules s=null)
-    { super(con, s, packetServiceData, packetServiceData); }
+    this(SpecRules s=null)
+    { super(s, packetServiceData, packetServiceData); }
 
 protected override:
     void startMessage(void[] buf, ref size_t idx, ulong dev, ubyte fnc)
@@ -51,7 +51,7 @@ unittest
 {
     import std.array : appender;
     void[100] data = void;
-    auto tcp = new TCP(nullConnection);
+    auto tcp = new TCP();
     int xx = 123;
     auto res = cast(ubyte[])tcp.buildMessage(data, 1, 2, xx);
     assert (res == [0,0, 0,0, 0,6, 1, 2, 0,123,0,0]);

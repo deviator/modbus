@@ -1,6 +1,8 @@
 ///
 module modbus.types;
 
+package(modbus) enum MAX_BUFFER = 260;
+
 ///
 struct Message
 {
@@ -28,7 +30,7 @@ enum FunctionCode : ubyte
     diagnostics                = 0x08, /// 08 (0x08) Serial line only
     getCommEventCounter        = 0x0B, /// 11 (0x0B) Serial line only
     writeMultipleCoils         = 0x0F, /// 15 (0x0F)
-    writeMultipleRegister      = 0x10, /// 16 (0x10)
+    writeMultipleRegisters     = 0x10, /// 16 (0x10)
     readFileRecord             = 0x14, /// 20 (0x14)
     writeFileRecord            = 0x15, /// 21 (0x15) 
     maskWriteRegister          = 0x16, /// 22 (0x16)

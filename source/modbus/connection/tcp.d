@@ -32,8 +32,6 @@ protected:
         return buf[0..res];
     }
 
-    void delegate(Duration) sleepFunc;
-
 public:
 
     TcpSocket socket() @property { return _socket; }
@@ -61,7 +59,7 @@ override:
 
     void write(const(void)[] msg)
     {
-        if (sleepFunc is null) return m_write(_socket, msg);
+        if (sleepFunc is null) m_write(_socket, msg);
 
         size_t written;
         auto sw = StopWatch(AutoStart.yes);
@@ -69,7 +67,7 @@ override:
         {
             written += m_write(_socket, msg[written..$]);
             if (written == msg.length) return;
-            sleepFunc();
+            sleepFunc(1.msecs);
         }
         throw new TimeoutException(socket.to!string);
     }
@@ -83,16 +81,16 @@ override:
         auto sw = StopWatch(AutoStart.yes);
         while (sw.peek < _rtm)
         {
-            readed += m_read(_socket, buf[readed..$]);
+            readed += m_read(_socket, buf[readed..$]).length;
             if (readed == buf.length) return buf[];
-            sleepFunc();
+            sleepFunc(1.msecs);
         }
         throw new TimeoutException(socket.to!string);
     }
 }
 
 ///
-class SlaveTcpConnection : Connection
+class SlaveTcpConnection : TcpConnectionBase
 {
     Socket cli;
 
@@ -119,7 +117,7 @@ override:
         if (cli is null)
             throw modbusException("no client connected");
 
-        if (sleepFunc is null) return m_write(cli, msg);
+        if (sleepFunc is null) m_write(cli, msg);
 
         size_t written;
         auto sw = StopWatch(AutoStart.yes);
@@ -127,7 +125,7 @@ override:
         {
             written += m_write(cli, msg[written..$]);
             if (written == msg.length) return;
-            sleepFunc();
+            sleepFunc(1.msecs);
         }
         throw new TimeoutException(socket.to!string);
     }
@@ -137,7 +135,7 @@ override:
         /// TODO REWORK FOR CAN_READ FLAG
         try cli = socket.accept();
         catch (Exception) return buf[0..0];
-        if (cli is null) return ber[0..0];
+        if (cli is null) return buf[0..0];
 
         if (sleepFunc is null) return m_read(cli, buf);
 
@@ -145,10 +143,10 @@ override:
         auto sw = StopWatch(AutoStart.yes);
         while (sw.peek < _rtm)
         {
-            readed += m_read(_socket, buf[readed..$]);
+            readed += m_read(_socket, buf[readed..$]).length;
             if (readed == buf.length) return buf[];
-            sleepFunc();
+            sleepFunc(1.msecs);
         }
-        return buf[0..res];
+        return buf[0..readed];
     }
 }

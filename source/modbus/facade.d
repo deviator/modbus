@@ -18,12 +18,12 @@ protected:
     ///
     SerialPortConnection spcom;
 
-    override @property
-    {
-        Duration writeStepPause() { return readStepPause; }
-        Duration readStepPause()
-        { return (cast(ulong)(1e8 / com.baudRate)).hnsecs; }
-    }
+    //override @property
+    //{
+    //    Duration writeStepPause() { return readStepPause; }
+    //    Duration readStepPause()
+    //    { return (cast(ulong)(1e8 / com.baudRate)).hnsecs; }
+    //}
 
 public:
 
@@ -36,15 +36,13 @@ public:
     { this(port, SPConfig.parse(mode)); }
 
     ///
-    this(string port, uint baudrate, void delegate(Duration) sf,
-            SpecRules sr=null)
-    { this(port, SPConfig(baudrate), sf, sr); }
+    this(string port, uint baudrate, SpecRules sr=null)
+    { this(port, SPConfig(baudrate), sr); }
 
     ///
-    this(string port, SPConfig cfg,
-            void delegate(Duration) sf=null, SpecRules sr=null)
+    this(string port, SPConfig cfg, SpecRules sr=null)
     {
-        this(new SerialPortTm(port, cfg), sf, sr);
+        this(new SerialPortBlk(port, cfg), sr);
         _manageSerialPort = true;
     }
 
@@ -52,11 +50,10 @@ public:
     bool manageSerialPort() const @property { return _manageSerialPort; }
 
     ///
-    this(SerialPortTm sp, void delegate(Duration) sf=null,
-            SpecRules sr=null)
+    this(SerialPort sp, SpecRules sr=null)
     {
         spcom = new SerialPortConnection(sp);
-        super(new RTU(spcom, sr), sf);
+        super(new RTU(sr), spcom);
     }
 
     ///
@@ -66,9 +63,10 @@ public:
     }
 
     ///
-    inout(SerialPort) com() inout @property { return spcom.sp; }
+    inout(SerialPort) com() inout @property { return spcom.port; }
 }
 
+/+
 /// ModbusSingleSlave with RTU backend
 class ModbusSingleRTUSlave : ModbusSingleSlave
 {
@@ -375,3 +373,4 @@ unittest
     testFunc!ConT1();
     testFunc!ConT2();
 }
++/

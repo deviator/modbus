@@ -186,7 +186,7 @@ unittest
             auto ubmsg = cast(const(ubyte)[])msg;
             ulong dev;
             ubyte fnc;
-            sr.unpackkDF(ubmsg, dev, fnc);
+            sr.unpackDF(ubmsg, dev, fnc);
             ubmsg = ubmsg[sr.deviceTypeSize+1..$];
 
             if (dev !in regs) return msg.length;
@@ -196,7 +196,7 @@ unittest
 
             import std.stdio;
             if (!checkCRC(msg))
-                storeFail(fnc, FunctionErrorCode.ILLEGAL_DATA_VALUE);
+                storeFail(fnc, FunctionErrorCode.illegalDataValue);
             else
             {
                 bwrite(res[], fnc, &idx);
@@ -212,7 +212,7 @@ unittest
                             bwrite(res[], d[st+i], &idx);
                         break;
                     default:
-                        storeFail(fnc, FunctionErrorCode.ILLEGAL_DATA_VALUE);
+                        storeFail(fnc, FunctionErrorCode.illegalDataValue);
                         break;
                 }
             }
@@ -254,12 +254,18 @@ unittest
 
     auto com = new ModbusEmulator(sr);
 
-    auto mbus = new ModbusMaster(new RTU(new class Connection{
+    auto mbus = new ModbusMaster(new RTU(sr),
+    new class Connection {
         override:
-            size_t write(const(void)[] msg) { return com.write(msg); }
+            Duration readTimeout() @property { return Duration.zero; }
+            Duration writeTimeout() @property { return Duration.zero; }
+            void readTimeout(Duration) {}
+            void writeTimeout(Duration) {}
+            void write(const(void)[] msg) { com.write(msg); }
             void[] read(void[] buffer, CanRead cr=CanRead.allOrNothing)
             { return com.read(buffer); }
-        }, sr));
+        }
+    );
 
     assert(mbus.readInputRegisters(70, 0, 1)[0] == 1234);
     import std.algorithm : equal;

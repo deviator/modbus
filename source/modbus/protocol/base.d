@@ -15,8 +15,6 @@ public import modbus.backend;
 public import modbus.types;
 public import modbus.func;
 
-package enum MAX_BUFFER = 260;
-
 ///
 class Modbus
 {
