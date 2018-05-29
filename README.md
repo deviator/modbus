@@ -1,4 +1,11 @@
-### Modbus protocol
+# Modbus
+
+[![Build Status](https://travis-ci.org/deviator/modbus.svg?branch=master)](https://travis-ci.org/deviator/modbus)
+[![Build status](https://ci.appveyor.com/api/projects/status/pv75pbe12ho8ndwd?svg=true)](https://ci.appveyor.com/project/deviator/modbus)
+[![codecov](https://codecov.io/gh/deviator/modbus/branch/master/graph/badge.svg)](https://codecov.io/gh/deviator/modbus)
+[![Dub](https://img.shields.io/dub/v/modbus.svg)](http://code.dlang.org/packages/modbus)
+[![Downloads](https://img.shields.io/dub/dt/modbus.svg)](http://code.dlang.org/packages/modbus)
+[![License](https://img.shields.io/dub/l/modbus.svg)](http://code.dlang.org/packages/modbus)
 
 Library provides modbus wrapper over RTU and TCP connections.
 Using [`serialport`](https://github.com/deviator/serialport) for RTU.
