@@ -21,30 +21,12 @@ interface ModbusSlaveModel
     Reaction checkDeviceNumber(ulong dev);
 
     ///
-    Response onMessage(ref const Message msg, Backend be);
+    Response onMessage(ResponseWriter rw, ref const Message msg);
 }
 
 ///
 class MultiDevModbusSlaveModel : ModbusSlaveModel
 {
-    void[MAX_BUFFER] buffer;
-
-    static class SRW : ResponseWriter
-    {
-        Backend be;
-        void[] buf;
-
-        this(Backend be, void[] buf)
-        {
-            this.be = be;
-            this.buf = buf;
-        }
-
-        override Backend backend() @property { return be; }
-        protected override void[] buffer() @property { return buf; }
-
-    }
-
     ModbusSlaveDevice[] devs;
 
     override
@@ -57,17 +39,14 @@ class MultiDevModbusSlaveModel : ModbusSlaveModel
             return Reaction.none;
         }
 
-        Response onMessage(ref const Message msg, Backend be)
+        Response onMessage(ResponseWriter rw, ref const Message msg)
         {
             foreach (dev; devs)
                 if (dev.number == msg.dev)
-                {
-                    import std.typecons : scoped;
-                    auto srw = scoped!SRW(be, buffer[]);
-                    return dev.onMessage(msg, srw);
-                }
+                    return dev.onMessage(rw, msg);
             
-            throw modbusException("device not found");
+            throwModbusException("device not found");
+            assert(0,"WTF?");
         }
     }
 }

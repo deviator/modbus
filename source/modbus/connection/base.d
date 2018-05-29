@@ -45,6 +45,7 @@ interface Connection
 ///
 abstract class AbstractConnection : Connection
 {
+    import std.datetime : msecs;
 protected:
     Duration _rtm = 10.msecs, _wtm = 10.msecs;
 
@@ -89,6 +90,8 @@ Connection nullConnection()
     };
 }
 
+import modbus.cbuffer;
+
 /++ Circle buffer, for fibers only
  +/
 class VirtualConnection : AbstractConnection
@@ -100,27 +103,15 @@ class VirtualConnection : AbstractConnection
     import std.algorithm : min;
     import std.stdio;
 
-    protected size_t* _start, _end;
-
     string name;
 
-    void[] buffer;
+    CBufferCls rx, tx;
 
-    size_t start() @property { return *_start; }
-    size_t end() @property { return *_end; }
-
-    this(void[] buffer, size_t* start, size_t* end, string name)
+    this(CBufferCls rx, CBufferCls tx, string name)
     {
-        this.buffer = buffer;
         this.name = name;
-        this._start = start;
-        this._end = end;
-    }
-
-    invariant
-    {
-        assert(*_start < buffer.length);
-        assert(*_end < buffer.length);
+        this.rx = rx;
+        this.tx = tx;
     }
 
 override:
@@ -130,24 +121,19 @@ override:
         auto sw = StopWatch(AutoStart.yes);
         auto fb = enforce(Fiber.getThis, "must run in fiber");
 
-        auto ubuf = cast(ubyte[])buffer;
         auto udat = cast(ubyte[])data;
 
-        size_t n;
-        const bl = buffer.length;
         foreach (i; 0 .. data.length)
         {
-            n = (end + i) % bl;
-            while (n == start-1)
+
+            while (tx.full)
             {
                 fb.yield();
                 if (sw.peek > _wtm)
-                    throw new TimeoutException(name);
+                    throwTimeoutException(name, "write timeout");
             }
-            ubuf[n] = udat[i];
+            tx.put(udat[i]);
         }
-        *_end = (n+1) % bl;
-        return;
     }
 
     void[] read(void[] ext, CanRead cr=CanRead.allOrNothing)
@@ -156,59 +142,36 @@ override:
         auto fb = enforce(Fiber.getThis, "must run in fiber");
 
         auto uret = cast(ubyte[])ext;
-        auto ubuf = cast(ubyte[])buffer;
 
-        size_t n = start;
-        const bl = buffer.length;
         foreach (i; 0 .. uret.length)
         {
-            while (n == end)
+            while (rx.empty)
             {
                 if (sw.peek > _rtm)
                 {
                     if (cr == CanRead.allOrNothing)
-                        throw new TimeoutException(name);
+                        throwTimeoutException(name, "read timeout");
                     else if (cr == CanRead.anyNonZero)
                     {
                         if (i != 0) return ext[0..i];
-                        throw new TimeoutException(name);
+                        throwTimeoutException(name, "read timeout");
                     }
                     else return ext[0..i];
                 }
                 fb.yield();
             }
-            n = (start + i) % bl;
-            uret[i] = ubuf[n];
+            uret[i] = rx.front;
+            rx.popFront;
         }
-        *_start = (n+1) % bl;
         return ext[];
     }
 }
 
 unittest
 {
-    void[13*3+1] buffer = void;
-    size_t start, end;
+    auto cb = new CBufferCls(40);
 
-    auto gba = appender!(char[]);
-    string getBuffer()
-    {
-        auto buf = cast(char[])buffer;
-        auto s = start;
-        auto e = end;
-        gba.clear();
-        formattedWrite(gba, "%2d-%2d ", s, e);
-        foreach (i; 0 .. buf.length)
-        {
-            auto ch = buf[i];
-            if (s < e) gba.put(s <= i && i < e ? ch : '-');
-            else if (s == e) gba.put('-');
-            else       gba.put(s <= i || i < e ? ch : '-');
-        }
-        return gba.data().idup;
-    }
-
-    auto c = new VirtualConnection(buffer, &start, &end, "test");
+    auto c = new VirtualConnection(cb, cb, "test");
 
     void fnc()
     {
@@ -233,12 +196,12 @@ unittest
 }
 
 ///
-Connection[2] virtualPipeConnection(size_t bufSize, string prefix)
+VirtualConnection[2] virtualPipeConnection(size_t bufSize, string prefix)
 {
-    void[] buf = new void[](bufSize);
-    auto p = new size_t[](2);
-    return [new VirtualConnection(buf, &p[0], &p[1], prefix ~ "A"),
-            new VirtualConnection(buf, &p[0], &p[1], prefix ~ "B")];
+    auto a = new CBufferCls(bufSize);
+    auto b = new CBufferCls(bufSize);
+    return [new VirtualConnection(a, b, prefix ~ "A"),
+            new VirtualConnection(b, a, prefix ~ "B")];
 }
 
 unittest
@@ -247,28 +210,6 @@ unittest
     void[data.length] buf = void;
 
     auto cc = virtualPipeConnection(77, "test");
-
-    import std.array;
-
-    auto gba = appender!(char[]);
-
-    string getBuffer()
-    {
-        auto ftcon = enforce(cast(VirtualConnection)cc[0]);
-        auto buf = cast(char[])ftcon.buffer;
-        auto s = ftcon.start;
-        auto e = ftcon.end;
-        gba.clear();
-        formattedWrite(gba, "%2d-%2d ", s, e);
-        foreach (i; 0 .. buf.length)
-        {
-            auto ch = buf[i];
-            if (s < e) gba.put(s <= i && i < e ? ch : '-');
-            else if (s == e) gba.put('-');
-            else       gba.put(s <= i || i < e ? ch : '-');
-        }
-        return gba.data().idup;
-    }
 
     void fncA()
     {

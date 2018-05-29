@@ -1,19 +1,17 @@
 ///
 module modbus.backend.base;
 
-version (modbus_verbose)
-    public import std.experimental.logger;
-
-import std.traits;
+import std.traits : Unqual, isNumeric, isArray;
+import std.range : ElementType;
 
 import modbus.types;
 public import modbus.exception;
-public import modbus.connection;
 public import modbus.backend.specrules;
 
 /// Message builder and parser
 interface Backend
 {
+@nogc:
     /++ Full build message for sending
 
         work on preallocated buffer
@@ -46,7 +44,6 @@ interface Backend
             auto val = args[0];
             static if (isArray!T)
             {
-                import std.range : ElementType;
                 static if (is(Unqual!(ElementType!T) == void))
                     appendBytes(buf, idx, val);
                 else foreach (e; val) recursiveAppend(buf, idx, e);
@@ -71,10 +68,11 @@ interface Backend
     }
 
     /++ Read data to temp message buffer
+
         Params:
             data = parsing data buffer, CRC and etc
             result = reference to result message
-        +/
+     +/
     ParseResult parseMessage(const(void)[] data, ref Message result);
 
     ///
@@ -82,7 +80,7 @@ interface Backend
 
     const(void)[] packT(T)(T value) { return sr.packT(value); }
     T unpackT(T)(const(void)[] data) { return sr.unpackT!T(data); }
-    T unpackTT(T)(T value) { return sr.unpackT!T(cast(void[])[value]); }
+    T unpackTT(T)(ref const T value) { return sr.unpackT!T((cast(void*)&value)[0..T.sizeof]); }
 
 protected:
 
@@ -115,7 +113,7 @@ protected:
     immutable size_t devOffset;
     immutable size_t serviceData;
 
-    override SpecRules sr() @property { return specRules; }
+    override SpecRules sr() @nogc @property { return specRules; }
 
 public:
 
@@ -132,6 +130,8 @@ public:
         this.serviceData = serviceData;
         this.devOffset = deviceOffset;
     }
+
+@nogc:
 
     override
     {
@@ -164,10 +164,10 @@ protected:
         {
             auto inc = v.length;
             if (idx + inc + serviceData >= buf.length)
-                throw modbusException("many args");
+                throwModbusException("many args");
             buf[idx..idx+inc] = v[];
             idx += inc;
-            version (modbus_verbose)
+            version (modbus_verbose) debug
                 .trace("append msg buffer data: ", buf[0..idx]);
         }
     }

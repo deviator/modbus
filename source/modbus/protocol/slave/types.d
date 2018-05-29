@@ -15,19 +15,19 @@ struct Response
     static auto fail(T)(T val)
     { return Response(cast(void[])[val], true); }
 
-    /// Response with error code
+    /// Response with error code (1)
     enum illegalFunction = fail(FunctionErrorCode.illegalFunction);
-    /// ditto
+    /// Response with error code (2)
     enum illegalDataAddress = fail(FunctionErrorCode.illegalDataAddress);
-    /// ditto
+    /// Response with error code (3)
     enum illegalDataValue = fail(FunctionErrorCode.illegalDataValue);
-    /// ditto
+    /// Response with error code (4)
     enum slaveDeviceFailure = fail(FunctionErrorCode.slaveDeviceFailure);
-    /// ditto
+    /// Response with error code (5)
     enum acknowledge = fail(FunctionErrorCode.acknowledge);
-    /// ditto
+    /// Response with error code (6)
     enum slaveDeviceBusy = fail(FunctionErrorCode.slaveDeviceBusy);
-    /// ditto
+    /// Response with error code (8)
     enum memoryParityError = fail(FunctionErrorCode.memoryParityError);
 }
 
@@ -45,5 +45,14 @@ interface ResponseWriter
         size_t idx;
         backend.recursiveAppend(buffer, idx, args);
         return Response(buffer[0..idx]);
+    }
+
+    /// improve usability: wrap pack method with sending length of array
+    final Response packArray(ushort[] arr)
+    {
+        auto bc = (cast(void[])arr).length;
+        if (bc >= ubyte.max)
+            throwModbusException("so big array for pack to message");
+        return pack(cast(ubyte)bc, arr);
     }
 }

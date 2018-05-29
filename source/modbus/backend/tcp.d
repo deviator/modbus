@@ -55,4 +55,5 @@ unittest
     int xx = 123;
     auto res = cast(ubyte[])tcp.buildMessage(data, 1, 2, xx);
     assert (res == [0,0, 0,0, 0,6, 1, 2, 0,123,0,0]);
+    assert (tcp.check(res));
 }

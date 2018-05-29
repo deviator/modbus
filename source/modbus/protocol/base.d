@@ -16,7 +16,7 @@ public import modbus.types;
 public import modbus.func;
 
 ///
-class Modbus
+abstract class Modbus
 {
 protected:
     void[MAX_BUFFER] buffer;
@@ -28,8 +28,10 @@ public:
     ///
     this(Backend be, Connection con)
     {
-        this.be = enforce(be, modbusException("backend is null"));
-        this.con = enforce(con, modbusException("connection is null"));
+        if (be is null) throwModbusException("backend is null");
+        if (con is null) throwModbusException("connection is null");
+        this.be = be;
+        this.con = con;
     }
 
     ///

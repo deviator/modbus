@@ -21,6 +21,8 @@ class ModbusMaster : Modbus
      +/
     const(void)[] read(ulong dev, ubyte fnc, ptrdiff_t bytes)
     {
+        import std.datetime.stopwatch : StopWatch, AutoStart;
+
         size_t minRead = be.aduLength;
         size_t mustRead;
 
@@ -31,16 +33,26 @@ class ModbusMaster : Modbus
 
         Message msg;
 
+        // save timeout for restoring
+        const tm = con.readTimeout;
+        const cw = StopWatch(AutoStart.yes);
+
         con.read(buffer[0..minRead]);
+
+        // next read must have less time
+        con.readTimeout = tm - cw.peek;
+        // restore origin timeout
+        scope (exit) con.readTimeout = tm;
+
         if (be.ParseResult.success != be.parseMessage(buffer[0..minRead], msg))
         {
             if (minRead == mustRead)
-                throw checkFailException(dev, fnc);
+                throwCheckFailException(dev, fnc);
 
             con.read(buffer[minRead..mustRead], bytes < 0 ?
                                    con.CanRead.anyNonZero : con.CanRead.allOrNothing);
             if (be.ParseResult.success != be.parseMessage(buffer[0..mustRead], msg))
-                throw checkFailException(dev, fnc);
+                throwCheckFailException(dev, fnc);
         } // else it's error message
 
         version (modbus_verbose)
@@ -49,12 +61,11 @@ class ModbusMaster : Modbus
                             "%d (expect %d)", msg.dev, dev);
         
         if (msg.fnc != fnc)
-            throw functionErrorException(dev, fnc, msg.fnc, 
-                                    (cast(ubyte[])msg.data)[0]);
+            throwFunctionErrorException(dev, fnc,
+                cast(FunctionErrorCode)((cast(ubyte[])msg.data)[0]));
 
         if (bytes > 0 && msg.data.length != bytes)
-            throw readDataLengthException(dev, fnc, bytes,
-                                            msg.data.length);
+            throwReadDataLengthException(dev, fnc, bytes, msg.data.length);
 
         return msg.data;
     }
@@ -74,6 +85,14 @@ class ModbusMaster : Modbus
     {
         auto tmp = write(dev, fnc, args);
 
+        import core.thread;
+        auto dt = 20.msecs;
+        auto sw = StopWatch(AutoStart.yes);
+        if (auto f = Fiber.getThis)
+            while (sw.peek < dt)
+                f.yield();
+        else Thread.sleep(dt);
+
         try return read(dev, fnc, bytes);
         catch (ModbusDevException e)
         {
@@ -85,7 +104,7 @@ class ModbusMaster : Modbus
     /// 01 (0x01) Read Coils
     const(BitArray) readCoils(ulong dev, ushort start, ushort cnt)
     {
-        if (cnt >= 2000) throw modbusException("very big count");
+        if (cnt >= 2000) throwModbusException("very big count");
         return const(BitArray)(cast(void[])request(
                 dev, FunctionCode.readCoils,
                 1+(cnt+7)/8, start, cnt)[1..$],
@@ -95,7 +114,7 @@ class ModbusMaster : Modbus
     /// 02 (0x02) Read Discrete Inputs
     const(BitArray) readDiscreteInputs(ulong dev, ushort start, ushort cnt)
     {
-        if (cnt >= 2000) throw modbusException("very big count");
+        if (cnt >= 2000) throwModbusException("very big count");
         return const(BitArray)(cast(void[])request(
                 dev, FunctionCode.readDiscreteInputs,
                 1+(cnt+7)/8, start, cnt)[1..$],
@@ -109,7 +128,7 @@ class ModbusMaster : Modbus
      +/ 
     const(ushort)[] readHoldingRegisters(ulong dev, ushort start, ushort cnt)
     {
-        if (cnt >= 125) throw modbusException("very big count");
+        if (cnt >= 125) throwModbusException("very big count");
         return be2na(cast(ushort[])request(
                 dev, FunctionCode.readHoldingRegisters, 1+cnt*2, start, cnt)[1..$]);
     }
@@ -119,7 +138,7 @@ class ModbusMaster : Modbus
      +/ 
     const(ushort)[] readInputRegisters(ulong dev, ushort start, ushort cnt)
     {
-        if (cnt >= 125) throw modbusException("very big count");
+        if (cnt >= 125) throwModbusException("very big count");
         return be2na(cast(ushort[])request(
                 dev, FunctionCode.readInputRegisters, 1+cnt*2, start, cnt)[1..$]);
     }
@@ -138,13 +157,14 @@ class ModbusMaster : Modbus
     /// 15 (0x0F) Write Multiple Coils
     //void writeMultipleCoils(ulong dev, ushort addr, const BitArray arr)
     //{
+    //    if (arr.length >= 2000) throwModbusException("very big count");
     //    request(dev, FunctionCode.writeMultipleCoils, );
     //}
 
     /// 16 (0x10) Write Multiple Registers
     void writeMultipleRegisters(ulong dev, ushort addr, const(ushort)[] values)
     {
-        if (values.length >= 125) throw modbusException("very big count");
+        if (values.length >= 125) throwModbusException("very big count");
         request(dev, FunctionCode.writeMultipleRegisters,
                     4, addr, cast(ushort)values.length,
                     cast(byte)(values.length*2), values);

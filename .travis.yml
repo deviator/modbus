@@ -1,0 +1,30 @@
+dist: trusty
+sudo: required
+
+os:
+  - linux
+  - osx
+
+addons:
+  apt:
+    packages:
+      - socat
+
+before_install:
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install socat; fi
+
+language: d
+d:
+  - ldc
+  - ldc-beta
+  - ldc-1.8.0
+  - dmd
+  - dmd-nightly
+  - dmd-2.079.1
+  - dmd-2.078.3
+
+script: 
+  - dub test --compiler=${DC} --build=unittest-cov
+
+after_success:
+  - if [[ "$TRAVIS_OS_NAME" == "linux" && ${DC} == "dmd" ]]; then bash <(curl -s https://codecov.io/bash); fi

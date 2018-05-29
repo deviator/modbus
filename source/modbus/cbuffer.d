@@ -116,6 +116,13 @@ struct CBuffer
     ubyte[] getData() inout { return getData(0, length); }
 }
 
+class CBufferCls
+{
+    CBuffer s;
+    alias s this;
+    this(size_t n) { s = CBuffer(n); }
+}
+
 private version (unittest)
 {
     string fmtCBuffer(ref const CBuffer buf)
@@ -264,6 +271,17 @@ unittest
 unittest
 {
     auto buf = CBuffer(10);
+    buf.put(cast(ubyte[])[1,2,3,4,5,6,8,9]);
+    foreach (i; 0..7) buf.popFront;
+    buf.put(cast(ubyte[])[1,2,3,4,5,6]);
+    ubyte[] res;
+    foreach (v; buf) res ~= v;
+    assert(res == [9, 1, 2, 3, 4, 5, 6]);
+}
+
+unittest
+{
+    auto buf = new CBufferCls(10);
     buf.put(cast(ubyte[])[1,2,3,4,5,6,8,9]);
     foreach (i; 0..7) buf.popFront;
     buf.put(cast(ubyte[])[1,2,3,4,5,6]);

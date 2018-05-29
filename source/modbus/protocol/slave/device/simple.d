@@ -15,7 +15,7 @@ public:
     {
         ulong number() @property { return _number; }
 
-        Response onMessage(ref const Message msg, ResponseWriter rw)
+        Response onMessage(ResponseWriter rw, ref const Message msg)
         {
             alias FC = FunctionCode;
 

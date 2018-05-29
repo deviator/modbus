@@ -13,10 +13,23 @@ import modbus.protocol.slave.types;
 
     Define types
  +/
-class ModbusSlaveBase : Modbus
+class ModbusSlave : Modbus
 {
 protected:
     size_t readed;
+
+    void[MAX_BUFFER] responseBuffer;
+
+    class MBSRW : ResponseWriter
+    {
+        override @property
+        {
+            Backend backend() { return this.outer.be; }
+            protected void[] buffer() { return responseBuffer; }
+        }
+    }
+
+    MBSRW rw;
 
     StopWatch dt;
 
@@ -35,7 +48,7 @@ protected:
         {
             auto pm = model.checkDeviceNumber(msg.dev);
             if (pm == Reaction.none) return;
-            res = model.onMessage(msg, be);
+            res = model.onMessage(rw, msg);
             if (pm == Reaction.processAndAnswer)
                 this.write(msg.dev, msg.fnc | (res.error ? 0x80 : 0), res.data);
         }
@@ -54,14 +67,14 @@ protected:
 
 public:
     ///
-    this(Backend be, Connection con, ModbusSlaveModel model)
+    this(ModbusSlaveModel mdl, Backend be, Connection con)
     {
         super(be, con);
-        this.model = model;
-    }
+        this.model = mdl;
+        con.readTimeout = 0.msecs;
 
-    ///
-    alias Function = Response delegate(Message);
+        rw = new MBSRW;
+    }
 
     ///
     void iterate()
@@ -75,7 +88,14 @@ public:
             readed = 0;
         }
 
-        if (dt.peek > con.readTimeout * 5) reset();
+        if (dt.peek > con.readTimeout * MAX_BUFFER)
+        {
+            version (modbus_verbose)
+            {
+                .trace("so long read, reset");
+            }
+            reset();
+        }
 
         size_t nr;
 
@@ -87,9 +107,9 @@ public:
 
             version (modbus_verbose) if (nr)
             {
-                import std.stdio;
-                stderr.writeln(" now readed: ", nr);
-                stderr.writeln("full readed: ", readed);
+                .trace(" now readed: ", nr);
+                .trace("full readed: ", readed);
+                .trace("     readed: ", cast(ubyte[])buffer[0..readed]);
             }
         }
         while (nr && readed < buffer.length);

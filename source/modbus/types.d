@@ -3,6 +3,9 @@ module modbus.types;
 
 package(modbus) enum MAX_BUFFER = 260;
 
+version (modbus_verbose)
+    public import std.experimental.logger;
+
 ///
 struct Message
 {

@@ -12,5 +12,5 @@ interface ModbusSlaveDevice
     ulong number() @property;
 
     ///
-    Response onMessage(ref const Message msg, ResponseWriter rw);
+    Response onMessage(ResponseWriter rw, ref const Message msg);
 }

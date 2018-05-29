@@ -15,39 +15,9 @@ import modbus.connection.rtu;
 class ModbusRTUMaster : ModbusMaster
 {
 protected:
-    ///
     SerialPortConnection spcom;
 
-    //override @property
-    //{
-    //    Duration writeStepPause() { return readStepPause; }
-    //    Duration readStepPause()
-    //    { return (cast(ulong)(1e8 / com.baudRate)).hnsecs; }
-    //}
-
 public:
-
-    ///
-    this(string port, uint baudrate, string mode="8N1")
-    { this(port, SPConfig(baudrate).set(mode)); }
-
-    ///
-    this(string port, string mode)
-    { this(port, SPConfig.parse(mode)); }
-
-    ///
-    this(string port, uint baudrate, SpecRules sr=null)
-    { this(port, SPConfig(baudrate), sr); }
-
-    ///
-    this(string port, SPConfig cfg, SpecRules sr=null)
-    {
-        this(new SerialPortBlk(port, cfg), sr);
-        _manageSerialPort = true;
-    }
-
-    private bool _manageSerialPort;
-    bool manageSerialPort() const @property { return _manageSerialPort; }
 
     ///
     this(SerialPort sp, SpecRules sr=null)
@@ -57,110 +27,32 @@ public:
     }
 
     ///
-    void flush()
-    {
-        com.flush();
-    }
+    void flush() { port.flush(); }
 
     ///
-    inout(SerialPort) com() inout @property { return spcom.port; }
+    inout(SerialPort) port() inout @property { return spcom.port; }
 }
 
-/+
 /// ModbusSingleSlave with RTU backend
-class ModbusSingleRTUSlave : ModbusSingleSlave
+class ModbusRTUSlave : ModbusSlave
 {
 protected:
-    ///
     SerialPortConnection spcom;
-
-    override Duration writeStepPause() @property
-    { return (cast(ulong)(1e8 / com.baudRate)).hnsecs; }
 
 public:
 
     ///
-    this(ulong dev, string port, uint baudrate, string mode="8N1")
-    { this(dev, port, SerialPort.Config(baudrate).set(mode)); }
-
-    ///
-    this(ulong dev, string port, string mode)
-    { this(dev, port, SerialPort.Config.parse(mode)); }
-
-    ///
-    this(ulong dev, string port, uint baudrate,
-            void delegate(Duration) sf, SpecRules sr=null)
-    { this(dev, port, SerialPort.Config(baudrate), sf, sr); }
-
-    ///
-    this(ulong dev, string port, SerialPort.Config cfg,
-            void delegate(Duration) sf=null, SpecRules sr=null)
-    {
-        this(dev, new SerialPortNonBlk(port, cfg), sf, sr);
-        _manageSerialPort = true;
-    }
-
-    private bool _manageSerialPort;
-    bool manageSerialPort() const @property { return _manageSerialPort; }
-
-    ///
-    this(ulong dev, SerialPort sp, void delegate(Duration) sf=null,
-            SpecRules sr=null)
+    this(ModbusSlaveModel mdl, SerialPort sp, SpecRules sr=null)
     {
         spcom = new SerialPortConnection(sp);
-        super(dev, new RTU(spcom, sr), sf);
+        super(mdl, new RTU(sr), spcom);
     }
 
     ///
-    inout(SerialPort) com() inout @property { return spcom.sp; }
-}
-
-/// ModbusMultiSlave with RTU backend
-class ModbusMultiRTUSlave : ModbusMultiSlave
-{
-protected:
-    ///
-    SerialPortConnection spcom;
-
-    override Duration writeStepPause() @property
-    { return (cast(ulong)(1e8 / com.baudRate)).hnsecs; }
-
-public:
+    void flush() { port.flush(); }
 
     ///
-    this(string port, uint baudrate, string mode="8N1")
-    { this(port, SerialPort.Config(baudrate).set(mode)); }
-
-    ///
-    this(string port, string mode)
-    { this(port, SerialPort.Config.parse(mode)); }
-
-    ///
-    this(string port, uint baudrate, void delegate(Duration) sf,
-            SpecRules sr=null)
-    { this(port, SerialPort.Config(baudrate), sf, sr); }
-
-    ///
-    this(string port, SerialPort.Config cfg,
-            void delegate(Duration) sf=null, SpecRules sr=null)
-    {
-        this(new SerialPortNonBlk(port, cfg), sf, sr);
-        _manageSerialPort = true;
-    }
-
-    private bool _manageSerialPort;
-    bool manageSerialPort() const @property { return _manageSerialPort; }
-
-    ///
-    this(SerialPort sp, void delegate(Duration) sf=null,
-            SpecRules sr=null)
-    {
-        spcom = new SerialPortConnection(sp);
-        super(new RTU(spcom, sr), sf);
-    }
-
-    ///
-    inout(SerialPort) com() inout @property { return spcom.sp; }
+    inout(SerialPort) port() inout @property { return spcom.port; }
 }
 
 /// Modbus with TCP backend based on TcpSocket from std.socket
@@ -168,12 +60,13 @@ class ModbusTCPMaster : ModbusMaster
 {
 protected:
     MasterTcpConnection mtc;
+
 public:
     ///
     this(Address addr, SpecRules sr=null)
     {
         mtc = new MasterTcpConnection(addr);
-        super(new TCP(mtc, sr));
+        super(new TCP(sr), mtc);
     }
 
     ///
@@ -182,195 +75,34 @@ public:
     ~this() { mtc.socket.close(); }
 }
 
-version (unittest)
+///
+class ModbusTCPSlave : ModbusSlave
 {
-    //version = modbus_verbose;
-
-    import std.stdio;
+protected:
+    SlaveTcpConnection mtc;
+    import core.thread : Fiber, Thread;
     import std.datetime.stopwatch;
-    import std.range;
 
-    class ConT1 : Connection
+    void sleep(Duration dt) @nogc
     {
-        string name;
-        ubyte[]* wbuf;
-        ubyte[]* rbuf;
-        this(string name, ref ubyte[] wbuf, ref ubyte[] rbuf)
+        if (Fiber.getThis is null) Thread.sleep(dt);
+        else
         {
-            this.name = name;
-            this.wbuf = &wbuf;
-            this.rbuf = &rbuf;
-        }
-    override:
-        size_t write(const(void)[] msg)
-        {
-            (*wbuf) = cast(ubyte[])(msg.dup);
-            version (modbus_verbose)
-                stderr.writefln("%s write %s", name, (*wbuf));
-            return msg.length;
-        }
-
-        void[] read(void[] buffer)
-        {
-            auto ub = cast(ubyte[])buffer;
-            size_t i;
-            version (modbus_verbose)
-                stderr.writefln("%s read %s", name, (*rbuf));
-            for (i=0; i < ub.length; i++)
-            {
-                if ((*rbuf).empty)
-                    return buffer[0..i];
-                ub[i] = (*rbuf).front;
-                (*rbuf).popFront;
-            }
-            return buffer[0..i];
+            const tm = StopWatch(AutoStart.yes);
+            while (tm.peek < dt) Fiber.yield();
         }
     }
 
-    class ConT2 : ConT1
+public:
+    ///
+    this(ModbusSlaveModel mdl, Address addr, SpecRules sr=null)
     {
-        import std.random;
-
-        this(string name, ref ubyte[] wbuf, ref ubyte[] rbuf)
-        { super(name, wbuf, rbuf); }
-
-        void slp(Duration d)
-        {
-            import core.thread;
-            auto dt = StopWatch(AutoStart.yes);
-            import std.conv : to;
-            while (dt.peek.to!Duration < d) Fiber.yield();
-        }
-
-    override:
-        size_t write(const(void)[] msg)
-        {
-            auto l = uniform!"[]"(0, msg.length);
-            (*wbuf) ~= cast(ubyte[])(msg[0..l].dup);
-            slp(uniform(1, 5).usecs);
-            version (modbus_verbose)
-                stderr.writefln("%s write %s", name, (*wbuf));
-            return l;
-        }
-
-        void[] read(void[] buffer)
-        {
-            auto l = uniform!"[]"(0, (*rbuf).length);
-            auto ub = cast(ubyte[])buffer;
-            size_t i;
-            version (modbus_verbose)
-                stderr.writefln("%s read %s", name, (*rbuf));
-            for (i=0; i < ub.length; i++)
-            {
-                if (i > l) return buffer[0..i];
-                slp(uniform(1, 5).msecs);
-                if ((*rbuf).empty)
-                    return buffer[0..i];
-                ub[i] = (*rbuf).front;
-                (*rbuf).popFront;
-            }
-            return buffer[0..i];
-        }
+        mtc = new SlaveTcpConnection(addr, &sleep);
+        super(mdl, new TCP(sr), mtc);
     }
 
-    void testFunc(CT)()
-    {
-        ubyte[] chA, chB;
+    ///
+    inout(TcpSocket) socket() inout @property { return mtc.socket; }
 
-        auto conA = new CT("A", chA, chB);
-        auto conB = new CT("B", chB, chA);
-
-        auto sr = new BasicSpecRules;
-        auto mm = new ModbusMaster(new RTU(conA, sr));
-        mm.writeTimeout = 100.msecs;
-        mm.readTimeout = 200.msecs;
-
-        auto ms = new class ModbusSingleSlave
-        {
-            ushort[] table;
-            this()
-            {
-                super(1, new RTU(conB, sr));
-                writeTimeout = 100.msecs;
-                table = [123, 234, 345, 456, 567, 678, 789, 890, 901];
-                func[FuncCode.readHoldingRegisters] = (Message m)
-                {
-                    enum us = ushort.sizeof;
-                    auto start = be.unpackT!ushort(m.data[0..us]);
-                    auto count = be.unpackT!ushort(m.data[us..us*2]);
-                    version (modbus_verbose)
-                    {
-                        import std.stdio;
-                        stderr.writeln("count check fails: ", count == 0 || count > 125);
-                        stderr.writeln("start check fails: ", start >= table.length);
-                    }
-                    if (count == 0 || count > 125) return illegalDataValue;
-                    if (start >= table.length) return illegalDataAddress;
-                    if (start+count >= table.length) return illegalDataAddress;
-
-                    return packResult(cast(ubyte)(count*2),
-                        table[start..start+count]);
-                };
-            }
-        };
-
-        import core.thread;
-
-        auto f1 = new Fiber(
-        {
-            bool thrown;
-            try mm.readHoldingRegisters(1, 3, 100);
-            catch (FunctionErrorException e)
-            {
-                thrown = true;
-                assert(e.code == FunctionErrorCode.ILLEGAL_DATA_ADDRESS);
-            }
-            assert (thrown);
-
-            thrown = false;
-            try mm.readHoldingRegisters(1, 200, 2);
-            catch (FunctionErrorException e)
-            {
-                thrown = true;
-                assert(e.code == FunctionErrorCode.ILLEGAL_DATA_ADDRESS);
-            }
-            assert (thrown);
-
-            thrown = false;
-            try mm.readInputRegisters(1, 200, 2);
-            catch (FunctionErrorException e)
-            {
-                thrown = true;
-                assert(e.code == FunctionErrorCode.ILLEGAL_FUNCTION);
-            }
-            assert (thrown);
-
-            auto data = mm.readHoldingRegisters(1, 2, 3);
-            assert (data == [345, 456, 567]);
-        });
-
-        auto f2 = new Fiber({
-            while (true)
-            {
-                ms.iterate();
-                import std.conv;
-                auto dt = StopWatch(AutoStart.yes);
-                while (dt.peek.to!Duration < 1.msecs)
-                    Fiber.yield();
-            }
-        });
-        while (true)
-        {
-            if (f1.state == f1.state.TERM) break;
-            f1.call();
-            f2.call();
-        }
-    }
+    ~this() { mtc.socket.close(); }
 }
-
-unittest
-{
-    testFunc!ConT1();
-    testFunc!ConT2();
-}
-+/
