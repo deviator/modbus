@@ -27,9 +27,6 @@ public:
     }
 
     ///
-    void flush() { port.flush(); }
-
-    ///
     inout(SerialPort) port() inout @property { return spcom.port; }
 }
 
@@ -47,9 +44,6 @@ public:
         spcom = new SerialPortConnection(sp);
         super(mdl, new RTU(sr), spcom);
     }
-
-    ///
-    void flush() { port.flush(); }
 
     ///
     inout(SerialPort) port() inout @property { return spcom.port; }
@@ -80,24 +74,12 @@ class ModbusTCPSlave : ModbusSlave
 {
 protected:
     SlaveTcpConnection mtc;
-    import core.thread : Fiber, Thread;
-    import std.datetime.stopwatch;
-
-    void sleep(Duration dt) @nogc
-    {
-        if (Fiber.getThis is null) Thread.sleep(dt);
-        else
-        {
-            const tm = StopWatch(AutoStart.yes);
-            while (tm.peek < dt) Fiber.yield();
-        }
-    }
 
 public:
     ///
     this(ModbusSlaveModel mdl, Address addr, SpecRules sr=null)
     {
-        mtc = new SlaveTcpConnection(addr, &sleep);
+        mtc = new SlaveTcpConnection(addr);
         super(mdl, new TCP(sr), mtc);
     }
 

@@ -101,8 +101,7 @@ public:
 
         do
         {
-            try nr = con.read(buffer[readed..readed+1]).length;
-            catch (TimeoutException e) nr = 0;
+            nr = con.read(buffer[readed..readed+1], con.CanRead.zero).length;
             readed += nr;
 
             version (modbus_verbose) if (nr)

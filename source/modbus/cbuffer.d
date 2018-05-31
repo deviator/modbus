@@ -123,30 +123,6 @@ class CBufferCls
     this(size_t n) { s = CBuffer(n); }
 }
 
-private version (unittest)
-{
-    string fmtCBuffer(ref const CBuffer buf)
-    {
-        import std.format : format;
-        string ret = format("[%2d - %2d] ", buf.s, buf.e);
-
-        string val(ubyte v, bool p)
-        { return p ? format("%3d ", v) : "--- "; }
-
-        foreach (i; 0 .. buf.buf.length)
-        {
-            auto v = buf.buf[i];
-            auto st = buf.s != buf.e;
-            if (buf.s < buf.e) ret ~= val(v, st && buf.s <= i && i < buf.e);
-            else ret ~= val(v, st && (buf.s <= i || i < buf.e));
-        }
-
-        return ret;
-    }
-
-    import std.stdio;
-}
-
 unittest
 {
     auto buf = CBuffer(10);
@@ -286,6 +262,9 @@ unittest
     foreach (i; 0..7) buf.popFront;
     buf.put(cast(ubyte[])[1,2,3,4,5,6]);
     ubyte[] res;
+    buf[0] = 12;
+    buf[5] = 55;
+    assert(buf[0] == 12);
     foreach (v; buf) res ~= v;
-    assert(res == [9, 1, 2, 3, 4, 5, 6]);
+    assert(res == [12, 1, 2, 3, 4, 55, 6]);
 }

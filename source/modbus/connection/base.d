@@ -86,7 +86,7 @@ Connection nullConnection()
             void writeTimeout(Duration) {}
         }
         void write(const(void)[] data) { }
-        void[] read(void[] buffer, CanRead cr=CanRead.allOrNothing) { return buffer[0..0]; }
+        void[] read(void[] b, CanRead cr=CanRead.allOrNothing) { return b[0..0]; }
     };
 }
 
