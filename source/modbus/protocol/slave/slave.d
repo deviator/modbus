@@ -71,7 +71,7 @@ public:
     {
         super(be, con);
         this.model = mdl;
-        con.readTimeout = 0.msecs;
+        con.readTimeout = 10.msecs;
 
         rw = new MBSRW;
     }

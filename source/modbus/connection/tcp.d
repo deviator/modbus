@@ -138,32 +138,23 @@ override:
 
     void[] read(void[] buf, CanRead cr=CanRead.allOrNothing)
     {
-        try cli = socket.accept();
-        catch (Exception e)
+        if (cli is null)
         {
-            if (cr == CanRead.zero) return buf[0..0];
-            else throw e;
+            try cli = socket.accept();
+            catch (Exception e)
+            {
+                if (cr == CanRead.zero) return buf[0..0];
+                else throw e;
+            }
         }
         enforce(cli, "cli is null, but accepted from socket");
-        version (unittest) testPrint("cli accepted");
         return l_read(cli, buf, cr);
     }
 }
 
-version (unittest):
+version (unittest): package(modbus):
 
-import core.thread;
-
-import std.algorithm : equal;
-import std.conv;
-import std.random;
-import std.stdio : stderr;
-
-enum test_print_offset = "    ";
-
-void testPrint(string s) { stderr.writeln(test_print_offset, s); }
-void testPrintf(string fmt="%s", Args...)(Args args)
-{ stderr.writefln!(test_print_offset~fmt)(args); }
+import modbus.ut;
 
 class CFSlave : Fiber
 {
@@ -221,22 +212,9 @@ class CFMaster : Fiber
 
 unittest
 {
-    stderr.writeln("=== start tcp connection test ===\n");
-    scope (success) stderr.writeln("=== finish tcp connection test ===");
-    scope (failure) stderr.writeln("!!!  fail tcp connection test  !!!");
-
+    mixin(mainTestMix);
     ut!simpleFiberTest(new InternetAddress("127.0.0.1", 8090));
 }
-
-void ut(alias fnc, Args...)(Args args)
-{
-    enum name = __traits(identifier, fnc);
-    stderr.writefln(">>> run %s", name);
-    fnc(args);
-    scope (success) stderr.writefln("<<< success %s\n", name);
-    scope (failure) stderr.writefln("!!! failure %s\n", name);
-}
-
 
 void simpleFiberTest(Address addr)
 {

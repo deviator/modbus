@@ -22,27 +22,23 @@ class ModbusMaster : Modbus
     const(void)[] read(ulong dev, ubyte fnc, ptrdiff_t bytes)
     {
         import std.datetime.stopwatch : StopWatch, AutoStart;
+        import std.algorithm : max;
 
         size_t minRead = be.aduLength;
         size_t mustRead;
 
-        if (bytes >= 0)
-            mustRead = be.aduLength(bytes);
-        else
-            mustRead = buffer.length;
+        mustRead = bytes >= 0 ? be.aduLength(bytes) : buffer.length;
 
         Message msg;
 
-        // save timeout for restoring
-        const tm = con.readTimeout;
+        const tm = con.readTimeout; // save timeout for restoring
         const cw = StopWatch(AutoStart.yes);
 
         con.read(buffer[0..minRead]);
 
         // next read must have less time
-        con.readTimeout = tm - cw.peek;
-        // restore origin timeout
-        scope (exit) con.readTimeout = tm;
+        con.readTimeout = max(Duration.zero, tm - cw.peek);
+        scope (exit) con.readTimeout = tm; // restore origin timeout
 
         if (be.ParseResult.success != be.parseMessage(buffer[0..minRead], msg))
         {
@@ -139,8 +135,8 @@ class ModbusMaster : Modbus
     const(ushort)[] readInputRegisters(ulong dev, ushort start, ushort cnt)
     {
         if (cnt >= 125) throwModbusException("very big count");
-        return be2na(cast(ushort[])request(
-                dev, FunctionCode.readInputRegisters, 1+cnt*2, start, cnt)[1..$]);
+        return be2na(cast(ushort[])request(dev, FunctionCode.readInputRegisters,
+                                            1+cnt*2, start, cnt)[1..$]);
     }
 
     /// 05 (0x05) Write Single Coil
@@ -153,21 +149,27 @@ class ModbusMaster : Modbus
     void writeSingleRegister(ulong dev, ushort addr, ushort value)
     { request(dev, FunctionCode.writeSingleRegister, 4, addr, value); }
 
-    // TODO
     /// 15 (0x0F) Write Multiple Coils
-    //void writeMultipleCoils(ulong dev, ushort addr, const BitArray arr)
-    //{
-    //    if (arr.length >= 2000) throwModbusException("very big count");
-    //    request(dev, FunctionCode.writeMultipleCoils, );
-    //}
+    void writeMultipleCoils(ulong dev, ushort addr, BitArray arr)
+    {
+        auto c = arr.length;
+        writeMultipleCoils(dev, addr, cast(ushort)arr.length, (cast(void[])arr)[0..(c+7)/8]);
+    }
+
+    /// ditto
+    void writeMultipleCoils(ulong dev, ushort addr, ushort cnt, const(void)[] arr)
+    {
+        if (cnt >= 2000) throwModbusException("very big count");
+        if ((cnt+7)/8 != arr.length) throwModbusException("count mismatch");
+        request(dev, FunctionCode.writeMultipleCoils, 4, addr, cnt, arr[0..(cnt+7)/8]);
+    }
 
     /// 16 (0x10) Write Multiple Registers
     void writeMultipleRegisters(ulong dev, ushort addr, const(ushort)[] values)
     {
         if (values.length >= 125) throwModbusException("very big count");
-        request(dev, FunctionCode.writeMultipleRegisters,
-                    4, addr, cast(ushort)values.length,
-                    cast(byte)(values.length*2), values);
+        request(dev, FunctionCode.writeMultipleRegisters, 4, addr,
+                cast(ushort)values.length, cast(byte)(values.length*2), values);
     }
 }
 

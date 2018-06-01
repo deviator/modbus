@@ -2,10 +2,10 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Debug with serialport",
+            "name": "Debug",
             "type": "gdb",
             "request": "launch",
-            "target": "./modbus-test-serialport",
+            "target": "./modbus-test-library",
             "cwd": "${workspaceRoot}"
         }
     ]

@@ -5,59 +5,59 @@ public import modbus.protocol.slave.slave;
 public import modbus.protocol.slave.model;
 public import modbus.protocol.slave.device;
 
-version (unittest)
+version (unittest) package(modbus):
+
+import modbus.ut;
+
+import modbus.connection;
+import modbus.backend;
+import modbus.protocol.master;
+
+static struct DeviceData
 {
-    import std.stdio;
-    import std.array;
-    import std.format;
+    align(1):
+    int value1;
+    float value2;
+    char[16] str;
+}
 
-    import modbus.connection;
-    import modbus.backend;
-    import modbus.protocol.master;
+class TestDevice : SimpleModbusSlaveDevice
+{
+    DeviceData data;
 
-    static struct DeviceData
+    this(ulong number)
     {
-        align(1):
-        int value1;
-        float value2;
-        char[16] str;
+        super(number);
+        data.value1 = 2;
+        data.value2 = 3.1415;
+        data.str[] = cast(char)0;
+        data.str[0..5] = "hello"[];
     }
 
-    class TestDevice : SimpleModbusSlaveDevice
+    ushort[] buf() @property
+    { return cast(ushort[])((cast(void*)&data)[0..DeviceData.sizeof]); }
+
+override:
+    Response onReadInputRegisters(ResponseWriter rw, ushort addr, ushort count)
     {
-        DeviceData data;
-
-        this(ulong number)
-        {
-            super(number);
-            data.value1 = 2;
-            data.value2 = 3.1415;
-            data.str[] = cast(char)0;
-            data.str[0..5] = "hello"[];
-        }
-
-        ushort[] buf() @property
-        { return cast(ushort[])((cast(void*)&data)[0..DeviceData.sizeof]); }
-
-    override:
-        Response onReadInputRegisters(ResponseWriter rw, ushort addr, ushort count)
-        {
-            if (count > 0x7D || count == 0)
-                return Response.illegalDataValue;
-            if (addr > buf.length || addr+count > buf.length)
-                return Response.illegalDataAddress;
-            return rw.packArray(buf[addr..count]);
-        }
+        if (count > 0x7D || count == 0)
+            return Response.illegalDataValue;
+        if (addr > buf.length || addr+count > buf.length)
+            return Response.illegalDataAddress;
+        return rw.packArray(buf[addr..count]);
     }
 }
 
 unittest
 {
-    import core.thread;
-
-    enum DN = 12;
-
+    mixin(mainTestMix);
     auto con = virtualPipeConnection(256, "test");
+    ut!(baseModbusTest!RTU)(con[0], con[1]);
+}
+
+void baseModbusTest(Be: Backend)(Connection masterCon, Connection slaveCon, Duration rtm=500.msecs)
+{
+    enum DN = 12;
 
     ushort[] origin = void;
 
@@ -65,15 +65,10 @@ unittest
 
     void mfnc()
     {
-        auto master = new ModbusMaster(new RTU, con[0]);
-
-        con[0].readTimeout = 25.msecs;
-
+        auto master = new ModbusMaster(new Be, masterCon);
+        masterCon.readTimeout = rtm;
         Fiber.getThis.yield();
-
-        import std.algorithm;
         assert( equal(origin, master.readInputRegisters(DN, 0, DeviceData.sizeof / 2)) );
-
         finish = true;
     }
 
@@ -85,10 +80,8 @@ unittest
         auto model = new MultiDevModbusSlaveModel;
         model.devs ~= device;
 
-        auto slave = new ModbusSlave(model, new RTU, con[1]);
-
+        auto slave = new ModbusSlave(model, new Be, slaveCon);
         Fiber.getThis.yield();
-
         while (!finish)
         {
             slave.iterate();
@@ -112,8 +105,6 @@ unittest
         //stderr.writeln(getBuffer());
         Thread.sleep(10.msecs);
         if (mfiber.state == TERM && sfiber.state == TERM)
-        {
             work = false;
-        }
     }
 }
