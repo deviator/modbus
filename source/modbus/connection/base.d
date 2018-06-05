@@ -40,6 +40,9 @@ interface Connection
             slice of buffer with readed data
      +/
     void[] read(void[] buffer, CanRead cr=CanRead.allOrNothing);
+
+    ///
+    void reconnect();
 }
 
 ///
@@ -61,6 +64,7 @@ public:
 
     abstract void write(const(void)[] data);
     abstract void[] read(void[] buffer, CanRead cr=CanRead.allOrNothing);
+    abstract void reconnect();
 }
 
 version (unittest)
@@ -87,6 +91,7 @@ Connection nullConnection()
         }
         void write(const(void)[] data) { }
         void[] read(void[] b, CanRead cr=CanRead.allOrNothing) { return b[0..0]; }
+        void reconnect() { }
     };
 }
 
@@ -164,6 +169,12 @@ override:
             rx.popFront;
         }
         return ext[];
+    }
+
+    void reconnect()
+    {
+        rx.clear();
+        tx.clear();
     }
 }
 

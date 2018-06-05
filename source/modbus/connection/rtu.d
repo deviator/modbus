@@ -32,4 +32,6 @@ override:
 
     void[] read(void[] buf, CanRead cr=CanRead.allOrNothing)
     { return sp.read(buf, cr); }
+
+    void reconnect() { sp.reopen(); }
 }

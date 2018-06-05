@@ -286,6 +286,7 @@ unittest
             void write(const(void)[] msg) { com.write(msg); }
             void[] read(void[] buffer, CanRead cr=CanRead.allOrNothing)
             { return com.read(buffer); }
+            void reconnect() {}
         }
     );
 
