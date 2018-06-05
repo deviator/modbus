@@ -7,7 +7,7 @@ public
     import core.thread;
 
     import std.array;
-    import std.algorithm : equal;
+    import std.algorithm;
     import std.concurrency;
     import std.conv;
     import std.datetime.stopwatch;
@@ -30,14 +30,14 @@ void testPrintf(string fmt="%s", Args...)(Args args)
 void ut(alias fnc, Args...)(Args args)
 {
     enum name = __traits(identifier, fnc);
-    stderr.writefln(" >> run %s", name);
+    stderr.writefln!" >> run %s"(name);
     fnc(args);
-    scope (success) stderr.writefln(" << success %s\n", name);
-    scope (failure) stderr.writefln(" !! failure %s\n", name);
+    scope (success) stderr.writefln!" << success %s\n"(name);
+    scope (failure) stderr.writefln!" !! failure %s\n"(name);
 }
 
 enum mainTestMix = `
-    stderr.writefln("=== start %s test {{{\n", __MODULE__);
-    scope (success) stderr.writefln("}}} finish %s test ===\n", __MODULE__);
-    scope (failure) stderr.writefln("}}} fail %s test  !!!", __MODULE__);
+    stderr.writefln!"=== start %s test {{{\n"(__MODULE__);
+    scope (success) stderr.writefln!"}}} finish %s test ===\n"(__MODULE__);
+    scope (failure) stderr.writefln!"}}} fail %s test  !!!"(__MODULE__);
     `;
