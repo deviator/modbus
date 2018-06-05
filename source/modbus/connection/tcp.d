@@ -183,15 +183,14 @@ class CFCSlave : Fiber
 
     void run()
     {
-        testPrint("slave start read");
+        testPrintf!("slave #%d start read")(id);
         while (result.length < data.length)
             result ~= con.read(data, con.CanRead.zero);
-        testPrintf!("slave finish read (%d)")(result.length);
+        testPrintf!("slave #%d finish read (%d)")(id, result.length);
 
-        yield();
-
+        con.sleep(uniform(1, 20).msecs);
         con.write([id]);
-        testPrint("slave request written");
+        testPrintf!("slave #%d finish")(id);
     }
 }
 
@@ -219,19 +218,21 @@ class CFSlave : Fiber
         while (true)
         {
             scope (exit) yield();
-            testPrint("server step");
             ss.reset();
             ss.add(serv);
 
             while (Socket.select(ss, null, null, Duration.zero))
             {
                 cons ~= new CFCSlave(serv.accept(), cons.length, dlen);
-                testPrint("new client");
+                testPrintf!"new client, create slave #%d"(cons.length-1);
                 yield();
             }
 
-            cons.filter!(a=>a.state != a.State.TERM).each!(a=>a.call);
-            yield();
+            foreach (c; cons.filter!(a=>a.state != a.State.TERM))
+            {
+                c.call;
+                c.con.sleep(uniform(1,5).msecs);
+            }
 
             if (cons.length && cons.all!(a=>a.state == a.State.TERM))
             {
@@ -245,12 +246,14 @@ class CFSlave : Fiber
 class CFMaster : Fiber
 {
     MasterTcpConnection con;
+    size_t id;
     size_t serv_id;
 
     void[] data;
 
-    this(Address addr, size_t dlen)
+    this(Address addr, size_t id, size_t dlen)
     {
+        this.id = id;
         con = new MasterTcpConnection(addr);
         data = new void[](dlen);
         foreach (ref v; cast(ubyte[])data)
@@ -260,16 +263,15 @@ class CFMaster : Fiber
 
     void run()
     {
-        con.sleep(uniform(1, 100).msecs);
-        testPrint("master start write");
+        con.sleep(uniform(1, 50).msecs);
         con.write(data);
-        testPrint("master finish write");
-        con.readTimeout = 1800.msecs;
-        con.sleep(uniform(1, 100).msecs);
+        testPrintf!"master #%d send data"(id);
+        con.readTimeout = 2000.msecs;
+        con.sleep(uniform(1, 50).msecs);
         void[24] tmp = void;
-        testPrint("master start receive");
+        testPrintf!"master #%d start receive"(id);
         serv_id = (cast(size_t[])con.read(tmp[], con.CanRead.anyNonZero))[0];
-        testPrintf!"master receive: '%s'"(serv_id);
+        testPrintf!"master #%d receive serv id #%d"(id, serv_id);
     }
 }
 
@@ -287,7 +289,7 @@ void simpleFiberTest(Address addr)
     scope(exit) cfs.serv.close();
     CFMaster[] cfm;
     foreach (i; 0 .. N)
-        cfm ~= new CFMaster(addr, BS);
+        cfm ~= new CFMaster(addr, i, BS);
     scope(exit) cfm.each!(a=>a.con.sock.close());
 
     bool work = true;
