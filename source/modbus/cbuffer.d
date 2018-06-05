@@ -51,6 +51,8 @@ struct CBuffer
             foreach (i, v; data) put(v);
         }
 
+        void clear() { s = e; }
+
         @property inout 
         {
             ref inout(ubyte) front()
@@ -242,6 +244,11 @@ unittest
     auto buf2 = buf[2..6];
     assert(buf2.getData() == [2, 3, 4, 5]);
     assert(buf.buf == buf2.buf);
+    buf2.clear();
+    assert(buf2.empty);
+    assert(buf2.length == 0);
+    assert(buf2.getData() == []);
+    assert(buf.getData() == [9, 1, 2, 3, 4, 5, 6]);
 }
 
 unittest
