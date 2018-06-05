@@ -15,7 +15,7 @@ import modbus.connection.base;
 abstract class TcpConnectionBase : AbstractConnection
 {
 protected:
-    TcpSocket _socket;
+    Socket sock;
 
     void delegate(Duration) sleepFunc;
 
@@ -29,142 +29,153 @@ protected:
             if (auto f = Fiber.getThis)
             {
                 const sw = StopWatch(AutoStart.yes);
-                while (sw.peek < d) f.yield();
+                do f.yield(); while (sw.peek < d);
             }
             else Thread.sleep(d);
         }
     }
 
-    ptrdiff_t m_write(Socket s, const(void)[] buf)
-    {
-        const res = s.send(buf);
-        if (res == Socket.ERROR)
-            throwModbusException("error while send data to tcp socket");
-        return res;
-    }
+    import core.stdc.errno;
 
-    void l_write(Socket s, const(void)[] buf)
+    void m_write(const(void)[] buf)
     {
+        sock.blocking = false;
         size_t written;
         const sw = StopWatch(AutoStart.yes);
         while (sw.peek < _wtm)
         {
-            written += m_write(s, buf[written..$]);
+            auto res = sock.send(buf[written..$]);
+            if (res == Socket.ERROR)
+            {
+                if (wouldHaveBlocked) res = 0;
+                else throwModbusException("TCP Socket send error " ~ sock.getErrorText);
+            }
+            written += res;
             if (written == buf.length) return;
-            this.sleep(1.msecs);
+            this.sleep(10.usecs);
         }
-        throwTimeoutException(s.to!string, "write timeout");
+        throwTimeoutException(sock.to!string, "write timeout");
     }
 
-    void[] m_read(Socket s, void[] buf)
+    void[] m_read(void[] buf, CanRead cr)
     {
-        s.blocking = false;
-        const res = s.receive(buf);
-        if (res == Socket.ERROR) return buf[0..0];
-        return buf[0..res];
-    }
-
-    void[] l_read(Socket s, void[] buf, CanRead cr)
-    {
+        sock.blocking = false;
         size_t readed;
         const sw = StopWatch(AutoStart.yes);
+        auto ss = new SocketSet;
+        ss.add(sock);
         while (sw.peek < _rtm)
         {
-            // can block if timeout not expires, but not full data received
-            readed += m_read(s, buf[readed..$]).length;
+            auto res = sock.receive(buf[readed..$]);
+            if (res == Socket.ERROR)
+            {
+                if (wouldHaveBlocked) res = 0;
+                else throwModbusException("TCP Socket receive error " ~ sock.getErrorText);
+            }
+            readed += res;
             if (readed == buf.length) return buf[];
-            this.sleep(1.msecs);
+            this.sleep(10.usecs);
         }
         if (cr == CanRead.allOrNothing || (cr == CanRead.anyNonZero && !readed))
-            throwTimeoutException(s.to!string, "read timeout");
+            throwTimeoutException(sock.to!string, "read timeout");
         return buf[0..readed];
     }
 
 public:
 
     ///
-    inout(TcpSocket) socket() inout @property { return _socket; }
+    inout(Socket) socket() inout @property { return sock; }
 }
 
 /// Client
 class MasterTcpConnection : TcpConnectionBase
 {
-    ///
-    this(Address addr, void delegate(Duration) sleepFunc=null)
-    {
-        _socket = new TcpSocket();
+protected:
+    Address addr;
 
-        this.sleepFunc = sleepFunc;
-
-        _socket.blocking = true;
-        _socket.connect(addr);
-        _socket.blocking = false;
-    }
-
-override:
-
-    void write(const(void)[] msg) { l_write(_socket, msg); }
-
-    void[] read(void[] buf, CanRead cr=CanRead.allOrNothing)
-    { return l_read(_socket, buf, cr); }
-}
-
-/// Server
-class SlaveTcpConnection : TcpConnectionBase
-{
-    Socket cli;
+public:
 
     ///
     this(Address addr, void delegate(Duration) sleepFunc=null)
     {
-        _socket = new TcpSocket();
-
+        this.addr = addr;
         this.sleepFunc = sleepFunc;
+    }
 
-        _socket.blocking = true;
-        _socket.bind(addr);
-        _socket.listen(1);
-        _socket.blocking = false;
+    protected bool haltSock()
+    {
+        if (sock is null) return false;
+        sock.shutdown(SocketShutdown.BOTH);
+        sock.close();
+        sock = null;
+        return true;
+    }
+
+    protected void initSock()
+    {
+        sock = new TcpSocket();
+        sock.blocking = true;
+        sock.connect(addr);
+        sock.blocking = false;
     }
 
 override:
+
     void write(const(void)[] msg)
     {
-        if (cli is null)
-            throwModbusException("no client connected");
-
-        l_write(cli, msg);
+        if (sock is null) initSock();
+        m_write(msg);
     }
 
     void[] read(void[] buf, CanRead cr=CanRead.allOrNothing)
     {
-        if (cli is null)
-        {
-            try cli = socket.accept();
-            catch (Exception e)
-            {
-                if (cr == CanRead.zero) return buf[0..0];
-                else throw e;
-            }
-        }
-        enforce(cli, "cli is null, but accepted from socket");
-        return l_read(cli, buf, cr);
+        if (sock is null) initSock();
+        return m_read(buf, cr);
     }
+
+    void reconnect()
+    {
+        haltSock();
+        initSock();
+    }
+}
+
+/// slave connection
+class SlaveTcpConnection : TcpConnectionBase
+{
+    ///
+    this(Socket s)
+    {
+        if (s is null)
+            throwModbusException("TCP Socket is null");
+        sock = s;
+        sock.blocking = false;
+    }
+
+override:
+    void write(const(void)[] msg) { m_write(msg); }
+
+    void[] read(void[] buf, CanRead cr=CanRead.allOrNothing)
+    { return m_read(buf, cr); }
+
+    void reconnect() { assert(0, "not allowed for SlaveTcpConnection"); }
 }
 
 version (unittest): package(modbus):
 
 import modbus.ut;
 
-class CFSlave : Fiber
+class CFCSlave : Fiber
 {
     SlaveTcpConnection con;
 
     void[] result, data;
+    size_t id;
 
-    this(Address addr, size_t dlen)
+    this(Socket sock, size_t id, size_t dlen)
     {
-        con = new SlaveTcpConnection(addr);
+        this.id = id;
+        con = new SlaveTcpConnection(sock);
         data = new void[](dlen);
         con.readTimeout = 1.seconds;
         super(&run);
@@ -177,13 +188,64 @@ class CFSlave : Fiber
             result ~= con.read(data, con.CanRead.zero);
         testPrintf!("slave finish read (%d)")(result.length);
 
-        con.write("buffer filled");
+        yield();
+
+        con.write([id]);
+        testPrint("slave request written");
+    }
+}
+
+class CFSlave : Fiber
+{
+    TcpSocket serv;
+    CFCSlave[] cons;
+    size_t dlen;
+    SocketSet ss;
+
+    this(Address addr, int cc, size_t dlen)
+    {
+        this.dlen = dlen;
+        serv = new TcpSocket;
+        serv.blocking = true;
+        serv.bind(addr);
+        serv.listen(cc);
+        serv.blocking = false;
+        ss = new SocketSet;
+        super(&run);
+    }
+
+    void run()
+    {
+        while (true)
+        {
+            scope (exit) yield();
+            testPrint("server step");
+            ss.reset();
+            ss.add(serv);
+
+            while (Socket.select(ss, null, null, Duration.zero))
+            {
+                cons ~= new CFCSlave(serv.accept(), cons.length, dlen);
+                testPrint("new client");
+                yield();
+            }
+
+            cons.filter!(a=>a.state != a.State.TERM).each!(a=>a.call);
+            yield();
+
+            if (cons.length && cons.all!(a=>a.state == a.State.TERM))
+            {
+                testPrint("server finished");
+                break;
+            }
+        }
     }
 }
 
 class CFMaster : Fiber
 {
     MasterTcpConnection con;
+    size_t serv_id;
 
     void[] data;
 
@@ -198,31 +260,35 @@ class CFMaster : Fiber
 
     void run()
     {
+        con.sleep(uniform(1, 100).msecs);
         testPrint("master start write");
         con.write(data);
         testPrint("master finish write");
-
-        con.readTimeout = 1.seconds;
-
+        con.readTimeout = 1800.msecs;
+        con.sleep(uniform(1, 100).msecs);
         void[24] tmp = void;
-        auto ret = con.read(tmp[], con.CanRead.anyNonZero);
-        testPrint("master receive: "~cast(string)ret);
+        testPrint("master start receive");
+        serv_id = (cast(size_t[])con.read(tmp[], con.CanRead.anyNonZero))[0];
+        testPrintf!"master receive: '%s'"(serv_id);
     }
 }
 
 unittest
 {
     mixin(mainTestMix);
-    ut!simpleFiberTest(new InternetAddress("127.0.0.1", 8090));
+    ut!simpleFiberTest(new InternetAddress("127.0.0.1", 8091));
 }
 
 void simpleFiberTest(Address addr)
 {
     enum BS = 512;
-    auto cfs = new CFSlave (addr, BS);
-    scope(exit) cfs.con._socket.close();
-    auto cfm = new CFMaster(addr, BS);
-    scope(exit) cfm.con._socket.close();
+    enum N = 12;
+    auto cfs = new CFSlave(addr, N, BS);
+    scope(exit) cfs.serv.close();
+    CFMaster[] cfm;
+    foreach (i; 0 .. N)
+        cfm ~= new CFMaster(addr, BS);
+    scope(exit) cfm.each!(a=>a.con.sock.close());
 
     bool work = true;
     int step;
@@ -230,19 +296,26 @@ void simpleFiberTest(Address addr)
     {
         alias TERM = Fiber.State.TERM;
         if (cfs.state != TERM) cfs.call;
-        if (cfm.state != TERM) cfm.call;
+        foreach (c; cfm.filter!(a=>a.state != TERM)) c.call;
 
         step++;
-        Thread.sleep(30.msecs);
-        if (cfm.state == TERM && cfs.state == TERM)
+        Thread.sleep(5.msecs);
+        if (cfm.all!(a=>a.state == TERM) && cfs.state == TERM)
         {
-            if (cfs.result.length == cfm.data.length)
+            enforce(cfs.cons.length == N, "no server connections");
+            foreach (i; 0 .. N)
             {
-                enforce(equal(cast(ubyte[])cfs.result, cast(ubyte[])cfm.data));
-                work = false;
-                testPrintf!"basic loop steps: %s"(step);
+                auto mm = cfm[i];
+                auto id = mm.serv_id;
+                auto ss = cfs.cons[id];
+                if (ss.result.length == mm.data.length)
+                {
+                    enforce(equal(cast(ubyte[])ss.result, cast(ubyte[])mm.data));
+                    work = false;
+                }
+                else throw new Exception(text(ss.result, " != ", mm.data));
             }
-            else throw new Exception(text(cfs.result, " != ", cfm.data));
+            testPrintf!"basic loop steps: %s"(step);
         }
     }
 }
