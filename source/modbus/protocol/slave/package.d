@@ -131,12 +131,11 @@ ComPipe getPlatformComPipe(int bufsz)
 unittest
 {
     mixin(mainTestMix);
+
+    ut!fiberVirtualPipeBasedTest();
+
     auto cp = getPlatformComPipe(BUFFER_SIZE);
     scope (exit) cp.close();
-
-    auto con = virtualPipeConnection(256, "test");
-    ut!(baseModbusTest!RTU)(con[0], con[1]);
-    ut!(baseModbusTest!TCP)(con[0], con[1]);
 
     if (cp is null)
     {
@@ -149,6 +148,13 @@ unittest
     stderr.writefln(" pipe ports: %s <=> %s", cp.ports[0], cp.ports[1]);
 
     ut!fiberSerialportBasedTest(cp.ports);
+}
+
+void fiberVirtualPipeBasedTest()
+{
+    auto con = virtualPipeConnection(256, "test");
+    baseModbusTest!RTU(con[0], con[1]);
+    baseModbusTest!TCP(con[0], con[1]);
 }
 
 void fiberSerialportBasedTest(string[2] ports)
@@ -166,15 +172,14 @@ void fiberSerialportBasedTest(string[2] ports)
 
     alias SPC = SerialPortConnection;
 
-    testPrint("try RTU BE");
     baseModbusTest!RTU(new SPC(p1), new SPC(p2));
-    testPrint("try TCP BE");
     baseModbusTest!TCP(new SPC(p1), new SPC(p2));
 }
 
 void baseModbusTest(Be: Backend)(Connection masterCon, Connection slaveCon, Duration rtm=500.msecs)
 {
     enum DN = 13;
+    testPrintf!"BE: %s"(Be.classinfo.name);
 
     enum dln = TestModbusSlaveDevice.Data.sizeof / 2;
     ushort[] origin = void;

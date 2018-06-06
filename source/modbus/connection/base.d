@@ -77,24 +77,6 @@ version (unittest)
     import std.format;
 }
 
-Connection nullConnection()
-{
-    return new class Connection
-    {
-    override:
-        @property
-        {
-            Duration readTimeout() { return Duration.zero; }
-            Duration writeTimeout() { return Duration.zero; }
-            void readTimeout(Duration) {}
-            void writeTimeout(Duration) {}
-        }
-        void write(const(void)[] data) { }
-        void[] read(void[] b, CanRead cr=CanRead.allOrNothing) { return b[0..0]; }
-        void reconnect() { }
-    };
-}
-
 import modbus.cbuffer;
 
 /++ Circle buffer, for fibers only
@@ -130,7 +112,6 @@ override:
 
         foreach (i; 0 .. data.length)
         {
-
             while (tx.full)
             {
                 fb.yield();
