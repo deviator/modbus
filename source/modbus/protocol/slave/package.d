@@ -193,9 +193,7 @@ void baseModbusTest(Be: Backend)(Connection masterCon, Connection slaveCon, Dura
 
         master.writeMultipleRegisters(DN, 2, [0xBEAF, 0xDEAD]);
         assert((*originData).value2 == 0xDEADBEAF);
-        stderr.writeln(*originData);
         master.writeSingleRegister(DN, 15, 0xABCD);
-        stderr.writeln(*originData);
         assert((*originData).usv[1] == 0xABCD);
 
         finish = true;
