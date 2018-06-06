@@ -83,6 +83,16 @@ public:
 
     ///
     inout(Socket) socket() inout @property { return sock; }
+
+    ///
+    bool isAlive() @property { return sock.isAlive; }
+
+    ///
+    void close()
+    {
+        sock.shutdown(SocketShutdown.BOTH);
+        sock.close();
+    }
 }
 
 /// Client
@@ -103,8 +113,7 @@ public:
     protected bool haltSock()
     {
         if (sock is null) return false;
-        sock.shutdown(SocketShutdown.BOTH);
-        sock.close();
+        close();
         sock = null;
         return true;
     }
@@ -237,8 +246,7 @@ class CFSlave : Fiber
                 catch (CloseTcpConnection)
                 {
                     testPrintf!"close slave #%d connection (%d bytes received)"(c.id, c.result.length);
-                    c.con.socket.shutdown(SocketShutdown.BOTH);
-                    c.con.socket.close();
+                    c.con.close();
                     c.terminate = true;
                 }
                 c.con.sleep(uniform(1,5).msecs);
@@ -367,6 +375,7 @@ void closeSocketTest(Address addr)
         {
             work = false;
             assert(cfs.cons.all!(a=>a.terminate));
+            assert(cfs.cons.all!(a=>!a.con.isAlive));
             assert(cfs.cons.all!(a=>a.result.length == BS));
         }
     }
