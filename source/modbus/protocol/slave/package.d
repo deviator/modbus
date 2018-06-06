@@ -128,41 +128,6 @@ ComPipe getPlatformComPipe(int bufsz)
     }
 }
 
-static struct DeviceData
-{
-    align(1):
-    int value1;
-    float value2;
-    char[16] str;
-}
-
-class TestDevice : SimpleModbusSlaveDevice
-{
-    DeviceData data;
-
-    this(ulong number)
-    {
-        super(number);
-        data.value1 = 2;
-        data.value2 = 3.1415;
-        data.str[] = cast(char)0;
-        data.str[0..5] = "hello"[];
-    }
-
-    ushort[] buf() @property
-    { return cast(ushort[])((cast(void*)&data)[0..DeviceData.sizeof]); }
-
-override:
-    Response onReadInputRegisters(ResponseWriter rw, ushort addr, ushort count)
-    {
-        if (count > 0x7D || count == 0)
-            return Response.illegalDataValue;
-        if (addr > buf.length || addr+count > buf.length)
-            return Response.illegalDataAddress;
-        return rw.packArray(buf[addr..count]);
-    }
-}
-
 unittest
 {
     mixin(mainTestMix);
@@ -209,9 +174,11 @@ void fiberSerialportBasedTest(string[2] ports)
 
 void baseModbusTest(Be: Backend)(Connection masterCon, Connection slaveCon, Duration rtm=500.msecs)
 {
-    enum DN = 12;
+    enum DN = 13;
 
+    enum dln = TestModbusSlaveDevice.Data.sizeof / 2;
     ushort[] origin = void;
+    TestModbusSlaveDevice.Data* originData;
 
     bool finish;
 
@@ -220,14 +187,24 @@ void baseModbusTest(Be: Backend)(Connection masterCon, Connection slaveCon, Dura
         auto master = new ModbusMaster(new Be, masterCon);
         masterCon.readTimeout = rtm;
         Fiber.getThis.yield();
-        assert( equal(origin, master.readInputRegisters(DN, 0, DeviceData.sizeof / 2)) );
+        auto dt = master.readInputRegisters(DN, 0, dln);
+        assert( equal(origin, dt) );
+        assert( equal(origin[2..4], master.readHoldingRegisters(DN, 2, 2)) );
+
+        master.writeMultipleRegisters(DN, 2, [0xBEAF, 0xDEAD]);
+        assert((*originData).value2 == 0xDEADBEAF);
+        stderr.writeln(*originData);
+        master.writeSingleRegister(DN, 15, 0xABCD);
+        stderr.writeln(*originData);
+        assert((*originData).usv[1] == 0xABCD);
+
         finish = true;
     }
 
     void sfnc()
     {
-        auto device = new TestDevice(DN);
-        origin = cast(ushort[])cast(void[])[device.data];
+        auto device = new TestModbusSlaveDevice(DN);
+        originData = &device.data;
 
         auto model = new MultiDevModbusSlaveModel;
         model.devs ~= device;
@@ -236,6 +213,7 @@ void baseModbusTest(Be: Backend)(Connection masterCon, Connection slaveCon, Dura
         Fiber.getThis.yield();
         while (!finish)
         {
+            origin = cast(ushort[])((cast(void*)&device.data)[0..dln*2]);
             slave.iterate();
             Fiber.getThis.yield();
         }
