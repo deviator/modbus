@@ -13,6 +13,10 @@ class ModbusException : Exception
 { private this() @safe pure nothrow @nogc { super(""); } }
 
 ///
+class CloseTcpConnection : ModbusException
+{ private this() @safe pure nothrow @nogc { super(); } }
+
+///
 class ModbusIOException : ModbusException
 {
     ///
@@ -160,6 +164,7 @@ private mixin template throwExcMix(E, string[] fields=[])
 }
 
 mixin throwExcMix!ModbusException;
+mixin throwExcMix!CloseTcpConnection;
 mixin throwExcMix!(ModbusIOException, ["dev", "fnc"]);
 mixin throwExcMix!(ModbusDevException, ["dev", "fnc"]);
 mixin throwExcMix!(CheckFailException, ["dev", "fnc"]);
