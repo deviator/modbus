@@ -141,7 +141,8 @@ public:
                 return ParseResult.incomplete;
             if (auto err = sr.unpackDF(data[devOffset..$], msg.dev, msg.fnc))
                 return ParseResult.incomplete;
-            if (!check(data)) return ParseResult.checkFails;
+            if (!check(data))
+                return ParseResult.checkFails;
 
             msg.data = data[startDataSplit..$-endDataSplit];
             return ParseResult.success;
