@@ -273,9 +273,7 @@ void sFnc(TInfo info)
         }
     }
     catch (Throwable e)
-    {
-        send(ownerTid, exc(e.msg));
-    }
+        send(ownerTid, exc(e.msg, e.file, e.line));
 }
 
 void mFnc(TInfo info)
