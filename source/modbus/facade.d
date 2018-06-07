@@ -220,7 +220,6 @@ unittest
     mixin(mainTestMix);
 
     auto cp = getPlatformComPipe(BUFFER_SIZE);
-    scope (exit) cp.close();
 
     if (cp is null)
     {
@@ -229,7 +228,9 @@ unittest
     }
 
     stderr.writefln(" port source `%s`\n", cp.command);
-    cp.open();
+    try cp.open();
+    catch (Exception e) stderr.writeln(" can't open com pipe: ", e.msg);
+    scope (exit) cp.close();
     stderr.writefln(" pipe ports: %s <=> %s", cp.ports[0], cp.ports[1]);
 
     auto tInfo = TInfo(42, cp.ports, "8N1", "127.0.0.1", cast(ushort)uniform(8110, 8120), 5.seconds);
