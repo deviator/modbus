@@ -110,14 +110,6 @@ public:
         this.sleepFunc = sleepFunc;
     }
 
-    protected bool haltSock()
-    {
-        if (sock is null) return false;
-        close();
-        sock = null;
-        return true;
-    }
-
     protected void initSock()
     {
         sock = new TcpSocket();
@@ -142,8 +134,15 @@ override:
 
     void reconnect()
     {
-        haltSock();
+        close();
         initSock();
+    }
+
+    void close()
+    {
+        if (sock is null) return;
+        super.close();
+        sock = null;
     }
 }
 
@@ -195,7 +194,10 @@ class CFCSlave : Fiber
     {
         testPrintf!("slave #%d start read")(id);
         while (result.length < data.length || inf)
+        {
             result ~= con.read(data, con.CanRead.zero);
+            testPrintf!("slave #%d readed %d")(id, result.length);
+        }
         testPrintf!("slave #%d finish read (%d)")(id, result.length);
 
         con.sleep(uniform(1, 20).msecs);
@@ -284,7 +286,15 @@ class CFMaster : Fiber
     void run()
     {
         con.sleep(uniform(1, 50).msecs);
-        con.write(data);
+        size_t writted;
+        while (writted != data.length)
+        {
+            auto cn = uniform(writted+1, data.length+1);
+            con.write(data[writted..cn]);
+            testPrintf!"master #%d writted %d"(id, cn);
+            writted = cn;
+            con.sleep(uniform(1, 10).msecs);
+        }
         testPrintf!"master #%d send data"(id);
         con.readTimeout = 2000.msecs;
         con.sleep(uniform(1, 50).msecs);

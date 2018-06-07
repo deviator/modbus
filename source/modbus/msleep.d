@@ -3,7 +3,7 @@ module modbus.msleep;
 import core.thread : Fiber, Thread;
 import std.datetime.stopwatch : Duration, StopWatch, AutoStart;
 
-void msleep(Duration d)
+void msleep()(Duration d)
 {
     if (auto f = Fiber.getThis)
     {
