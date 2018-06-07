@@ -156,7 +156,7 @@ ComPipe getPlatformComPipe(int bufsz)
         ret.open();
         return ret;
     }
-    catch (Exception e)
+    catch (Throwable e)
     {
         stderr.writeln();
         stderr.writeln(" error while open predefined ports: ", e.msg);
