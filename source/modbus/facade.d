@@ -141,7 +141,7 @@ public:
 
         if (slaves.any!(a=>!a.con.isAlive))
         {
-            version (unittest) testPrintf!("reduce slaves: old %d")(slaves.length);
+            debug version (unittest) auto oldCount = slaves.length;
             import std.range : enumerate;
             ptrdiff_t last=-1;
             foreach (i, s; enumerate(slaves.filter!(a=>a.con.isAlive)))
@@ -150,7 +150,7 @@ public:
                 last = i;
             }
             slaves.length = last+1;
-            version (unittest) testPrintf!("               new %d")(slaves.length);
+            debug version (unittest) testPrintf!("reduce slaves: %d -> %d")(oldCount, slaves.length);
         }
 
         foreach (sl; slaves)
@@ -165,7 +165,7 @@ public:
         while (Socket.select(ss, null, null, Duration.zero))
         {
             auto s = serv.accept;
-            version (unittest) testPrintf!("slaves: %d [max %d]")(slaves.length, maxConCount);
+            debug version (unittest) testPrintf!("slaves: %d [max %d]")(slaves.length, maxConCount);
             if (slaves.length >= maxConCount)
             {
                 s.shutdown(SocketShutdown.BOTH);
@@ -249,25 +249,32 @@ unittest
 
 void sFnc(TInfo info)
 {
-    auto mslp = delegate (Duration d) @nogc { msleep(d); };
-
-    auto mdl = new MultiDevModbusSlaveModel;
-    mdl.devs ~= new TestModbusSlaveDevice(info.mbn);
-
-    auto sp = new SerialPortFR(info.dev[1], info.mode, mslp);
-    scope (exit) sp.close();
-    auto ia = new InternetAddress(info.addr, info.port);
-
-    auto rtumbs = new ModbusRTUSlave(mdl, sp);
-    auto tcpmbs = new ModbusTCPSlaveServer(mdl, ia, mslp);
-    scope (exit) tcpmbs.halt();
-
-    const sw = StopWatch(AutoStart.yes);
-    while (sw.peek < info.worktime + 500.msecs)
+    try
     {
-        rtumbs.iterate();
-        tcpmbs.iterate();
-        mslp(1.msecs);
+        auto mslp = delegate (Duration d) @nogc { msleep(d); };
+
+        auto mdl = new MultiDevModbusSlaveModel;
+        mdl.devs ~= new TestModbusSlaveDevice(info.mbn);
+
+        auto sp = new SerialPortFR(info.dev[1], info.mode, mslp);
+        scope (exit) sp.close();
+        auto ia = new InternetAddress(info.addr, info.port);
+
+        auto rtumbs = new ModbusRTUSlave(mdl, sp);
+        auto tcpmbs = new ModbusTCPSlaveServer(mdl, ia, mslp);
+        scope (exit) tcpmbs.halt();
+
+        const sw = StopWatch(AutoStart.yes);
+        while (sw.peek < info.worktime + 500.msecs)
+        {
+            rtumbs.iterate();
+            tcpmbs.iterate();
+            mslp(1.msecs);
+        }
+    }
+    catch (Throwable e)
+    {
+        send(ownerTid, exc(e.msg));
     }
 }
 
@@ -302,10 +309,9 @@ void mFnc(TInfo info)
             catch (Exception e) testPrint("TCP read throws: " ~ e.msg);
 
             if (rtu_vals != rtu_vals.init && tcp_vals != tcp_vals.init)
-            {
-                if (equal(rtu_vals, tcp_vals)) testPrintf!"ok check %s"(rtu_vals);
-                else send(ownerTid, exc("fail check"));
-            }
+                if (!equal(rtu_vals, tcp_vals))
+                    send(ownerTid, exc("fail check"));
+
             msleep(1.msecs);
         }
     }
