@@ -5,57 +5,62 @@ import std.datetime.stopwatch;
 import core.thread;
 
 import modbus;
-import serialport;
 
-class DevSim : ModbusSlave
+class DevSim : SimpleModbusSlaveDevice
 {
-    ushort[] table;
+    ushort[] buf;
 
     void upd()
     {
-        table = [ 12,  23,  34,  45, 56,
-                  67,  78,  89,  90, 123,
-                 234, 345, 456, 567, 678];
+        buf = [ 12,  23,  34,  45, 56,
+                67,  78,  89,  90, 123,
+               234, 345, 456, 567, 678];
     }
 
-    this(ulong dev, Backend be)
+    this(ulong dev)
     {
-        super(dev, be);
+        super(dev);
         upd();
-        func[FuncCode.readInputRegisters] = (m)
-        {
-            auto start = be.unpackT!ushort(m.data[0..2]);
-            auto count = be.unpackT!ushort(m.data[2..4]);
+    }
 
-            if (count == 0 || count > 125) return illegalDataValue;
-            if (count > table.length) return illegalDataValue;
-            if (start >= table.length) return illegalDataAddress;
-
-            return packResult(cast(ubyte)(count*2),
-                    table[start..start+count]);
-        };
+    override Response onReadInputRegisters(ResponseWriter rw, ushort addr, ushort count)
+    {
+        if (count > 0x7D || count == 0)
+            return Response.illegalDataValue;
+        if (addr >= buf.length || addr+count > buf.length)
+            return Response.illegalDataAddress;
+        return rw.packArray(buf[addr..addr+count]);
     }
 }
 
 int main(string[] args)
 {
     args.each!writeln;
+
+    if (args.length < 4)
+    {
+        version (rtu) enum msg = "use: example_slave <COM> <BAUD> <DEV>";
+        version (tcp) enum msg = "use: example_slave  <IP> <PORT> <DEV>";
+        return fail(msg);
+    }
+    auto str = args[1];
+    auto numb = args[2].to!uint;
+    auto dev = args[3].to!uint;
+
+    auto mdl = new MultiDevModbusSlaveModel;
+    mdl.devs ~= new DevSim(dev);
+
     version (rtu)
     {
         pragma(msg, "RTU slave");
-        if (args.length < 4) return fail("use: example_slave <COM> <BAUDRATE> <DEV>");
-        auto be = new RTU(new SerialPortConnection(new SerialPort(args[1], args[2].to!uint)));
+        auto ds = new ModbusRTUSlave(mdl, new SerialPortBlk(str, numb));
     }
     else version (tcp)
     {
         pragma(msg, "TCP slave");
-        if (args.length < 4) return fail("use: example_slave <IP> <PORT> <DEV>");
-        auto be = new TCP(new SlaveTcpConnection(new InternetAddress(args[1], args[2].to!ushort)));
+        auto ds = new ModbusTCPSlaveServer(mdl, new InternetAddress(str, cast(ushort)numb));
     }
     else static assert(0, "unknown version");
-
-    auto dev = args[3].to!uint;
-    auto ds = new DevSim(dev, be);
 
     writefln("start");
     stdout.flush();

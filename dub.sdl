@@ -6,7 +6,7 @@ copyright "Copyright © 2017"
 license "MIT"
 
 targetType "library"
-dependency "serialport" version="~>2.1.4"
+dependency "serialport" version="~>2.1.6"
 
 //versions "modbus_verbose"
 //versions "modbus_use_prealloc_exceptions"

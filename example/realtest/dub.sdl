@@ -1,7 +1,0 @@
-name "realtest"
-
-targetName "real-test-modbus"
-
-dflags "-vgc"
-
-dependency "modbus" path="../.."

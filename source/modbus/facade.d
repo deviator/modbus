@@ -11,6 +11,9 @@ import std.socket : Socket, SocketSet, TcpSocket, SocketShutdown;
 
 import modbus.connection.rtu;
 
+public import serialport;
+public import std.socket : InternetAddress;
+
 /// Modbus master with RTU backend
 class ModbusRTUMaster : ModbusMaster
 {
@@ -91,6 +94,8 @@ protected:
         else msleep(d);
     }
 
+    void yield() { this.sleep(Duration.zero); }
+
     static class MBS : Fiber
     {
         ModbusSlave mb;
@@ -113,8 +118,8 @@ public:
 
     ///
     this(ModbusSlaveModel mdl, Address addr,
-        void delegate(Duration) sf=null, SpecRules sr=null)
-    { this(mdl, addr, 16, 16, sf, sr); }
+        void delegate(Duration) sf, SpecRules sr=null)
+    { this(mdl, addr, 16, 128, sf, sr); }
 
     ///
     this(ModbusSlaveModel mdl, Address addr, int acceptConQueueLen=16,
@@ -159,10 +164,10 @@ public:
             catch (CloseTcpConnection)
                 sl.con.close();
 
-            this.sleep(Duration.zero);
+            this.yield();
         }
 
-        while (Socket.select(ss, null, null, Duration.zero))
+        while (Socket.select(ss, null, null, Duration.zero) && ss.isSet(serv))
         {
             auto s = serv.accept;
             debug version (unittest) testPrintf!("slaves: %d [max %d]")(slaves.length, maxConCount);
@@ -174,7 +179,7 @@ public:
             }
             auto con = new SlaveTcpConnection(s, sleepFunc);
             slaves ~= new MBS(new ModbusSlave(model, be, con), con);
-            this.sleep(Duration.zero);
+            this.yield();
         }
     }
 
@@ -262,7 +267,7 @@ void sFnc(TInfo info)
         auto ia = new InternetAddress(info.addr, info.port);
 
         auto rtumbs = new ModbusRTUSlave(mdl, sp);
-        auto tcpmbs = new ModbusTCPSlaveServer(mdl, ia, mslp);
+        auto tcpmbs = new ModbusTCPSlaveServer(mdl, ia, 16, 16, mslp);
         scope (exit) tcpmbs.halt();
 
         const sw = StopWatch(AutoStart.yes);

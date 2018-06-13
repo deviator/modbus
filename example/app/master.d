@@ -16,8 +16,9 @@ int main(string[] args)
             return 1;
         }
 
-        auto mm = new ModbusRTUMaster(args[1], args[2].to!uint);
-        mm.flush(); // in case if before start serial port has data
+        auto sp = new SerialPortBlk(args[1], args[2].to!uint);
+        auto mm = new ModbusRTUMaster(sp);
+        mm.port.flush(); // in case if before start serial port has data
     }
     else version (tcp)
     {
@@ -29,9 +30,8 @@ int main(string[] args)
         }
 
         import modbus.connection.tcp;
-        auto mm = new ModbusMaster(
-                    new MasterTcpConnection(
-                        new InternetAddress(args[1], args[2].to!ushort)));
+        auto ia = new InternetAddress(args[1], args[2].to!ushort);
+        auto mm = new ModbusTCPMaster(ia);
     }
     else static assert(0, "unknown version");
 
