@@ -241,11 +241,17 @@ unittest
     auto tInfo = TInfo(42, cp.ports, "8N1", "127.0.0.1", cast(ushort)uniform(8110, 8120), 5.seconds);
 
     ut!({
-        spawnLinked(&sFnc, tInfo);
-        spawnLinked(&mFnc, tInfo);
-        spawnLinked(&mTcpFnc, tInfo, false);
-        spawnLinked(&mTcpFnc, tInfo, true);
-        foreach (i; 0 .. 4)
+        size_t n;
+        spawnLinked(&sFnc, tInfo); n++;
+        spawnLinked(&mFnc, tInfo); n++;
+        spawnLinked(&mTcpFnc, tInfo, true); n++;
+
+        version (linux)
+        {
+            spawnLinked(&mTcpFnc, tInfo, false); n++;
+        }
+
+        foreach (i; 0 .. n)
             receive(
                 (LinkTerminated lt) { },
                 (Exc e) { throw new Exception(e.msg); }
