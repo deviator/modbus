@@ -266,13 +266,16 @@ void sFnc(TInfo info)
         auto mslp = delegate (Duration d) @nogc { msleep(d); };
 
         auto mdl = new MultiDevModbusSlaveModel;
-        mdl.devs ~= new TestModbusSlaveDevice(info.mbn);
+        mdl.devices ~= new TestModbusSlaveDevice(info.mbn);
+
+        auto mdlnode = new NodeModbusSlaveModel;
+        mdlnode.models ~= mdl;
 
         auto sp = new SerialPortFR(info.dev[1], info.mode, mslp);
         scope (exit) sp.close();
         auto ia = new InternetAddress(info.addr, info.port);
 
-        auto rtumbs = new ModbusRTUSlave(mdl, sp);
+        auto rtumbs = new ModbusRTUSlave(mdlnode, sp);
         auto tcpmbs = new ModbusTCPSlaveServer(mdl, ia, 16, 16, mslp);
         scope (exit) tcpmbs.halt();
 

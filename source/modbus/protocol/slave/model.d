@@ -25,15 +25,48 @@ interface ModbusSlaveModel
 }
 
 ///
-class MultiDevModbusSlaveModel : ModbusSlaveModel
+class NodeModbusSlaveModel : ModbusSlaveModel
 {
-    ModbusSlaveDevice[] devs;
+    ///
+    ModbusSlaveModel[] models;
 
     override
     {
         Reaction checkDeviceNumber(ulong devNumber)
         {
-            foreach (dev; devs)
+            foreach (mdl; models)
+            {
+                const r = mdl.checkDeviceNumber(devNumber);
+                if (r != Reaction.none) return r;
+            }
+            return Reaction.none;
+        }
+
+        Response onMessage(ResponseWriter rw, ref const Message msg)
+        {
+            foreach (mdl; models)
+            {
+                const r = mdl.checkDeviceNumber(msg.dev);
+                if (r != Reaction.none) return mdl.onMessage(rw, msg);
+            }
+            
+            throwModbusException("model not found");
+            assert(0,"WTF?");
+        }
+    }
+}
+
+///
+class MultiCustomDevModbusSlaveModel(T : ModbusSlaveDevice) : ModbusSlaveModel
+{
+    ///
+    T[] devices;
+
+    override
+    {
+        Reaction checkDeviceNumber(ulong devNumber)
+        {
+            foreach (dev; devices)
                 if (dev.number == devNumber)
                     return Reaction.processAndAnswer;
             return Reaction.none;
@@ -41,7 +74,7 @@ class MultiDevModbusSlaveModel : ModbusSlaveModel
 
         Response onMessage(ResponseWriter rw, ref const Message msg)
         {
-            foreach (dev; devs)
+            foreach (dev; devices)
                 if (dev.number == msg.dev)
                     return dev.onMessage(rw, msg);
             
@@ -50,3 +83,6 @@ class MultiDevModbusSlaveModel : ModbusSlaveModel
         }
     }
 }
+
+///
+alias MultiDevModbusSlaveModel = MultiCustomDevModbusSlaveModel!ModbusSlaveDevice;

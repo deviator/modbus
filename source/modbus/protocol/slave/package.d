@@ -92,7 +92,7 @@ void baseModbusTest(Be: Backend)(Connection masterCon, Connection slaveCon, Dura
         originData = &device.data;
 
         auto model = new MultiDevModbusSlaveModel;
-        model.devs ~= device;
+        model.devices ~= device;
 
         auto slave = new ModbusSlave(model, new Be, slaveCon);
         Fiber.getThis.yield();
