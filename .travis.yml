@@ -23,6 +23,15 @@ d:
   - dmd-2.079.1
   - dmd-2.078.3
 
+matrix:
+  allow_failures:
+    - d: ldc
+      os: osx
+    - d: ldc-beta
+      os: osx
+    - d: ldc-1.8.0
+      os: osx
+
 script: 
   - dub test --compiler=${DC} --build=unittest-cov
 
