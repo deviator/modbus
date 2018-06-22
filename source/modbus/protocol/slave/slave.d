@@ -85,13 +85,13 @@ public:
         { return backend.parseMessage(data, msg) == backend.ParseResult.success; }
 
         ///
-        abstract long[2] findMessage(const(void)[] data, ref Message msg);
+        abstract ptrdiff_t[2] findMessage(const(void)[] data, ref Message msg);
     }
 
     ///
     static class SlaveMessageFinder : MessageFinder
     {
-        override long[2] findMessage(const(void)[] data, ref Message msg)
+        override ptrdiff_t[2] findMessage(const(void)[] data, ref Message msg)
         {
             assert(backend !is null);
             if (data.length >= MIN_MSG)
@@ -105,7 +105,7 @@ public:
     ///
     static class SnifferMessageFinder : MessageFinder
     {
-        override long[2] findMessage(const(void)[] data, ref Message msg)
+        override ptrdiff_t[2] findMessage(const(void)[] data, ref Message msg)
         {
             if (data.length >= MIN_MSG)
                 foreach (s; 0 .. data.length - MIN_MSG + 1)
