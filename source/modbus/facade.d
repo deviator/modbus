@@ -42,7 +42,7 @@ protected:
 public:
 
     ///
-    this(ModbusSlaveModel mdl, SerialPort sp, SpecRules sr=null)
+    this(ModbusSlaveModel mdl, SerialPort sp, SpecRules sr=null, MessageFinder mf=null)
     {
         spcom = new SerialPortConnection(sp);
         super(mdl, new RTU(sr), spcom);
@@ -81,6 +81,7 @@ protected:
     import core.thread : Fiber;
     import modbus.msleep : msleep;
 
+    ModbusSlave.MessageFinder messageFinder;
     ModbusSlaveModel model;
     TCP be;
     TcpSocket serv;
@@ -117,17 +118,19 @@ protected:
 public:
 
     ///
-    this(ModbusSlaveModel mdl, Address addr,
-        void delegate(Duration) sf, SpecRules sr=null)
-    { this(mdl, addr, 16, 128, sf, sr); }
+    this(ModbusSlaveModel mdl, Address addr, void delegate(Duration) sf,
+         SpecRules sr=null, ModbusSlave.MessageFinder mf=null)
+    { this(mdl, addr, 16, 128, sf, sr, mf); }
 
     ///
     this(ModbusSlaveModel mdl, Address addr, int acceptConQueueLen=16,
-         size_t maxConCount=128, void delegate(Duration) sf=null, SpecRules sr=null)
+         size_t maxConCount=128, void delegate(Duration) sf=null, SpecRules sr=null,
+         ModbusSlave.MessageFinder mf=null)
     {
         model = mdl;
         be = new TCP(sr);
         sleepFunc = sf;
+        messageFinder = mf;
 
         serv = new TcpSocket;
         serv.blocking = false;
@@ -178,7 +181,7 @@ public:
                 return;
             }
             auto con = new SlaveTcpConnection(s, sleepFunc);
-            slaves ~= new MBS(new ModbusSlave(model, be, con), con);
+            slaves ~= new MBS(new ModbusSlave(model, be, con, messageFinder), con);
             this.yield();
         }
     }
@@ -240,26 +243,32 @@ unittest
 
     auto tInfo = TInfo(42, cp.ports, "8N1", "127.0.0.1", cast(ushort)uniform(8110, 8120), 5.seconds);
 
-    ut!({
-        size_t n;
-        spawnLinked(&sFnc, tInfo); n++;
-        spawnLinked(&mFnc, tInfo); n++;
-        spawnLinked(&mTcpFnc, tInfo, true); n++;
-
-        version (linux)
-        {
-            spawnLinked(&mTcpFnc, tInfo, false); n++;
-        }
-
-        foreach (i; 0 .. n)
-            receive(
-                (LinkTerminated lt) { },
-                (Exc e) { throw new Exception(e.msg); }
-                );
-    }, "multiThread facade test");
+    ut!(multiTreadFacadeTest, "multiThread facade test (slave as slave)")(tInfo, true);
+    tInfo.port++;
+    ut!(multiTreadFacadeTest, "multiThread facade test (slave as sniffer)")(tInfo, false);
 }
 
-void sFnc(TInfo info)
+void multiTreadFacadeTest(TInfo tInfo, bool ss)
+{
+    size_t n;
+    spawnLinked(&sFnc, tInfo, ss); n++;
+    spawnLinked(&mFnc, tInfo); n++;
+    spawnLinked(&mTcpFnc, tInfo, true); n++;
+
+    version (linux)
+    {
+        spawnLinked(&mTcpFnc, tInfo, false); n++;
+    }
+
+    foreach (i; 0 .. n)
+        receive(
+            (LinkTerminated lt) { },
+            (Exc e) { throw new Exception(e.msg); }
+            );
+
+}
+
+void sFnc(TInfo info, bool ss)
 {
     try
     {
@@ -275,8 +284,10 @@ void sFnc(TInfo info)
         scope (exit) sp.close();
         auto ia = new InternetAddress(info.addr, info.port);
 
-        auto rtumbs = new ModbusRTUSlave(mdlnode, sp);
-        auto tcpmbs = new ModbusTCPSlaveServer(mdl, ia, 16, 16, mslp);
+        auto rtumbs = new ModbusRTUSlave(mdlnode, sp, null,
+                        ss ? null : new ModbusSlave.SnifferMessageFinder);
+        auto tcpmbs = new ModbusTCPSlaveServer(mdl, ia, 16, 16, mslp, null,
+                        ss ? null : new ModbusSlave.SnifferMessageFinder);
         scope (exit) tcpmbs.halt();
 
         const sw = StopWatch(AutoStart.yes);

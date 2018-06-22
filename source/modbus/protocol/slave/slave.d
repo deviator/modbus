@@ -7,6 +7,8 @@ public import modbus.types;
 import modbus.protocol.slave.model;
 import modbus.protocol.slave.types;
 
+import modbus.cbuffer;
+
 /++ Base class for modbus slave devices
 
     Iteration and message parsing process
@@ -19,6 +21,7 @@ protected:
     size_t readed;
 
     void[MAX_BUFFER] responseBuffer;
+    void[MAX_BUFFER*2] findMsgBuf;
 
     class MBSRW : ResponseWriter
     {
@@ -65,67 +68,81 @@ protected:
         }
     }
 
+    CBuffer cbuffer;
+
+    enum MIN_MSG = 4;
+
+    MessageFinder messageFinder;
+
 public:
+
     ///
-    this(ModbusSlaveModel mdl, Backend be, Connection con)
+    static class MessageFinder
+    {
+        Backend backend;
+
+        final bool testMessage(const(void)[] data, ref Message msg)
+        { return backend.parseMessage(data, msg) == backend.ParseResult.success; }
+
+        ///
+        abstract long[2] findMessage(const(void)[] data, ref Message msg);
+    }
+
+    ///
+    static class SlaveMessageFinder : MessageFinder
+    {
+        override long[2] findMessage(const(void)[] data, ref Message msg)
+        {
+            assert(backend !is null);
+            if (data.length >= MIN_MSG)
+                foreach (s; 0 .. data.length - MIN_MSG + 1)
+                    if (testMessage(data[s..$], msg))
+                        return [s, data.length];
+            return [-1, -1];
+        }
+    }
+
+    ///
+    static class SnifferMessageFinder : MessageFinder
+    {
+        override long[2] findMessage(const(void)[] data, ref Message msg)
+        {
+            if (data.length >= MIN_MSG)
+                foreach (s; 0 .. data.length - MIN_MSG + 1)
+                    foreach_reverse (n; s + MIN_MSG .. data.length + 1)
+                        if (testMessage(data[s..n], msg))
+                            return [s, n+1];
+            return [-1, -1];
+        }
+    }
+
+    ///
+    this(ModbusSlaveModel mdl, Backend be, Connection con, MessageFinder mf=null)
     {
         super(be, con);
         this.model = mdl;
         con.readTimeout = 10.msecs;
 
+        messageFinder = mf is null ? new SlaveMessageFinder : mf;
+        messageFinder.backend = be;
+
         rw = new MBSRW;
+        cbuffer = CBuffer(MAX_BUFFER*2);
     }
 
     ///
     void iterate()
     {
+        auto rdd = con.read(buffer[], con.CanRead.zero);
+        auto df = cbuffer.capacity - cbuffer.length - rdd.length;
+        if (df < 0) cbuffer.popFrontN(-df);
+        cbuffer.put(rdd);
+        auto data = cbuffer.fill(findMsgBuf);
+
         Message msg;
-
-        void reset()
-        {
-            dt.stop();
-            dt.reset();
-            readed = 0;
-        }
-
-        if (dt.peek > con.readTimeout * MAX_BUFFER)
-        {
-            version (modbus_verbose)
-            {
-                .trace("so long read, reset");
-            }
-            reset();
-        }
-
-        size_t nr;
-
-        do
-        {
-            nr = con.read(buffer[readed..readed+1], con.CanRead.zero).length;
-            readed += nr;
-
-            version (modbus_verbose) if (nr)
-            {
-                .trace(" now readed: ", nr);
-                .trace("full readed: ", readed);
-                .trace("     readed: ", cast(ubyte[])buffer[0..readed]);
-            }
-        }
-        while (nr && readed < buffer.length);
-
-        if (!readed) return;
-        if (!dt.running) dt.start();
-
-        bool parsed;
-        size_t started;
-        do 
-        {
-            parsed = be.parseMessage(buffer[started..readed], msg) == be.ParseResult.success;
-            started++;
-        }
-        while (!parsed && started < readed);
-
-        if (parsed) processMessage(msg);
-        if (parsed || buffer.length == readed) reset();
+        auto se = messageFinder.findMessage(data, msg);
+        if (se[0] == -1) return;
+        processMessage(msg);
+        cbuffer.popFrontN(se[1]);
     }
 }
