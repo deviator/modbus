@@ -1,6 +1,7 @@
 module modbus.cbuffer;
 
 import std.exception;
+import std.algorithm : equal;
 
 struct CBuffer
 {
@@ -29,26 +30,28 @@ struct CBuffer
         const @property
         {
             bool empty() { return s == e; }
-            bool full() { return e == (buf.length + s - 1) % buf.length; }
+            bool full() { return e == (capacity + s - 1) % capacity; }
 
             size_t length()
             {
                 if (s <= e) return e - s;
-                else return buf.length - (s - e);
+                else return capacity - (s - e);
             }
+
+            size_t capacity() { return buf.length; }
         }
 
         void put(ubyte val)
         {
             assert(!full, "no space");
             buf[e] = val;
-            e = (e + 1) % buf.length;
+            e = (e + 1) % capacity;
         }
 
-        void put(ubyte[] data)
+        void put(const(void)[] data)
         {
-            assert(data.length < buf.length - length, "no space");
-            foreach (i, v; data) put(v);
+            assert(data.length < capacity - length, "no space");
+            foreach (i, v; cast(ubyte[])data) put(v);
         }
 
         void clear() { s = e; }
@@ -68,22 +71,48 @@ struct CBuffer
             }
         }
 
-        void popFront()
+        void popFront() { popFrontN(1); }
+
+        size_t popFrontN(size_t n)
         {
             assert(!empty, "empty");
-            s = (s + 1) % buf.length;
+            long ns = s + n;
+            long el = e < s ? e + capacity : e;
+            auto df = el - ns;
+            if (df < 0) n += df;
+            s = (s + n) % capacity;
+            return n;
         }
 
         void popBack()
         {
             assert(!empty, "empty");
-            e = (buf.length + (cast(ptrdiff_t)e) - 1) % buf.length;
+            e = (capacity + (cast(ptrdiff_t)e) - 1) % capacity;
         }
 
         ref inout(ubyte) opIndex(size_t n) inout
         {
-            auto idx = (s+n) % buf.length;
+            auto idx = (s+n) % capacity;
             return buf[idx];
+        }
+
+        void[] fill(void[] buffer)
+        {
+            assert(buffer.length >= length, "no space");
+
+            if (empty) return buffer[0..0];
+
+            if (s < e)
+            {
+                buffer[0..length] = buf[s..e];
+                return buffer[0..length];
+            }
+            else
+            {
+                buffer[0..capacity-s] = buf[s..$];
+                buffer[capacity-s..length] = buf[0..e];
+                return buffer[0..length];
+            }
         }
     }
 
@@ -92,8 +121,8 @@ struct CBuffer
         enforce(a <= b, new Exception("range: a must be <= b"));
         enforce(b-a <= length, new Exception("range: b-a must be <= length"));
 
-        auto idx_s = (s + a) % buf.length;
-        auto idx_e = (s + b) % buf.length;
+        auto idx_s = (s + a) % capacity;
+        auto idx_e = (s + b) % capacity;
 
         return inout CBuffer(buf, idx_s, idx_e);
     }
@@ -108,8 +137,8 @@ struct CBuffer
 
         if (a == b) return [];
 
-        auto idx_s = (s + a) % buf.length;
-        auto idx_e = (s + b) % buf.length;
+        auto idx_s = (s + a) % capacity;
+        auto idx_e = (s + b) % capacity;
 
         if (idx_s < idx_e) return buf[idx_s..idx_e].dup;
         else return buf[idx_s..$].dup ~ buf[0..idx_e];
@@ -274,4 +303,87 @@ unittest
     assert(buf[0] == 12);
     foreach (v; buf) res ~= v;
     assert(res == [12, 1, 2, 3, 4, 55, 6]);
+}
+
+unittest
+{
+    auto buf = new CBufferCls(10);
+    buf.put(cast(ubyte[])[1,2,3,4,5,6,8,9]);
+    buf.popFrontN(7);
+    buf.put(cast(ubyte[])[1,2,3,4,5,6]);
+    ubyte[] res;
+    buf[0] = 12;
+    buf[5] = 55;
+    assert(buf[0] == 12);
+    foreach (v; buf) res ~= v;
+    assert(res == [12, 1, 2, 3, 4, 55, 6]);
+}
+
+unittest
+{
+    auto buf = new CBufferCls(10);
+    buf.put(cast(ubyte[])[1,2,3,4,5,6,7,8]);
+    assert(buf.popFrontN(2) == 2);
+    assert(equal(buf.dup, [3,4,5,6,7,8]));
+    assert(buf.popFrontN(2) == 2);
+    assert(equal(buf.dup, [5,6,7,8]));
+    assert(buf.popFrontN(2) == 2);
+    assert(equal(buf.dup, [7,8]));
+    assert(buf.popFrontN(2) == 2);
+    assert(equal(buf.dup, cast(ubyte[])[]));
+    assert(buf.empty);
+}
+
+unittest
+{
+    auto buf = new CBufferCls(10);
+    buf.put(cast(ubyte[])[1,2,3,4,5,6]);
+    assert(buf.popFrontN(10) == 6);
+    buf.put(cast(ubyte[])[1,2,3,4,5,6,7,8]);
+    assert(buf.popFrontN(6) == 6);
+    assert(equal(buf.dup, [7,8]));
+}
+
+unittest
+{
+    auto buf = new CBufferCls(10);
+    buf.put(cast(ubyte[])[1,2,3,4,5,6]);
+    assert(buf.popFrontN(10) == 6);
+    buf.put(cast(ubyte[])[1,2,3,4,5,6,7,8]);
+    assert(buf.popFrontN(10) == 8);
+    assert(buf.empty);
+}
+
+unittest
+{
+    auto buf = CBuffer(6);
+    buf.put(cast(ubyte[])[1,2,3,4,5,6]);
+    assert(buf.popFrontN(10) == 6);
+    buf.put(cast(ubyte[])[1,2,3,4]);
+    assert(buf.popFrontN(10) == 4);
+    assert(buf.empty);
+}
+
+unittest
+{
+    auto buf = new CBufferCls(10);
+    buf.put(cast(ubyte[])[1,2,3,4,5,6]);
+    assert(buf.popFrontN(10) == 6);
+    buf.put(cast(ubyte[])[1,2,3,4,5,6,7,8]);
+    ubyte[12] data;
+    auto res = buf.fill(data[]);
+    assert(res.ptr == data[].ptr);
+    assert(res.length == buf.length);
+    assert(equal(cast(ubyte[])res, [1,2,3,4,5,6,7,8]));
+}
+
+unittest
+{
+    auto buf = new CBufferCls(10);
+    buf.put(cast(ubyte[])[1,2,3,4,5,6]);
+    assert(buf.popFrontN(2) == 2);
+    ubyte[12] data;
+    auto res = buf.fill(data[]);
+    assert(res.length == buf.length);
+    assert(equal(cast(ubyte[])res, [3,4,5,6]));
 }
