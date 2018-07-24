@@ -53,17 +53,17 @@ protected:
             if (pm == Reaction.none) return;
             res = model.onMessage(rw, msg);
             if (pm == Reaction.processAndAnswer)
-                this.write(msg.dev, msg.fnc | (res.error ? 0x80 : 0), res.data);
+                this.writeS(msg.dev, msg.fnc | (res.error ? 0x80 : 0), msg.stamp, res.data);
         }
         catch (SlaveFuncProcessException e)
         {
             errorf("%s", e);
-            this.write(msg.dev, msg.fnc | 0x80, e.code);
+            this.writeS(msg.dev, msg.fnc | 0x80, msg.stamp, e.code);
         }
         catch (Throwable e)
         {
             errorf("%s", e);
-            this.write(msg.dev, msg.fnc | 0x80,
+            this.writeS(msg.dev, msg.fnc | 0x80, msg.stamp,
                     FunctionErrorCode.slaveDeviceFailure);
         }
     }

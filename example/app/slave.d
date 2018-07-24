@@ -48,7 +48,7 @@ int main(string[] args)
     auto dev = args[3].to!uint;
 
     auto mdl = new MultiDevModbusSlaveModel;
-    mdl.devs ~= new DevSim(dev);
+    mdl.devices ~= new DevSim(dev);
 
     version (rtu)
     {

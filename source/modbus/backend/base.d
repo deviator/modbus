@@ -25,10 +25,10 @@ interface Backend
         Returns:
             slice of preallocated buffer with message
      +/
-    void[] buildMessage(Args...)(void[] buf, ulong dev, ubyte fnc, Args args)
+    void[] buildMessage(Args...)(void[] buf, ulong dev, ubyte fnc, ulong stamp, Args args)
     {
         size_t idx;
-        startMessage(buf, idx, dev, fnc);
+        startMessage(buf, idx, dev, fnc, stamp);
         recursiveAppend(buf, idx, args);
         finalizeMessage(buf, idx);
         return buf[0..idx];
@@ -87,7 +87,7 @@ protected:
     SpecRules sr() @property;
 
     /// start building message
-    void startMessage(void[] buf, ref size_t idx, ulong dev, ubyte fnc);
+    void startMessage(void[] buf, ref size_t idx, ulong dev, ubyte fnc, ulong stamp);
 
     /// append data to message buffer
     void append(T)(void[] buf, ref size_t idx, T val)
@@ -144,6 +144,8 @@ public:
             if (!check(data))
                 return ParseResult.checkFails;
 
+            msg.stamp = getStamp(data);
+
             msg.data = data[startDataSplit..$-endDataSplit];
             return ParseResult.success;
         }
@@ -175,10 +177,11 @@ protected:
 
     abstract
     {
-        void startMessage(void[] buf, ref size_t idx, ulong dev, ubyte func);
+        void startMessage(void[] buf, ref size_t idx, ulong dev, ubyte func, ulong stamp);
         void finalizeMessage(void[] buf, ref size_t idx);
 
         bool check(const(void)[] data);
+        ulong getStamp(const(void)[] data);
         size_t endDataSplit() @property;
     }
 

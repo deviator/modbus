@@ -18,6 +18,8 @@ struct Message
 
     const(ubyte)[] ubdata() const @property
     { return cast(const(ubyte)[])data; }
+    /// packet number for RTU, transaction id for TCP
+    ulong stamp;
 }
 
 ///

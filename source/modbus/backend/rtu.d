@@ -1,6 +1,8 @@
 ///
 module modbus.backend.rtu;
 
+import std.datetime : Clock;
+
 import modbus.backend.base;
 
 ///
@@ -8,19 +10,27 @@ class RTU : BaseBackend
 {
 protected:
     enum lengthOfCRC = 2;
+    ulong stamp;
 
 public:
     ///
     this(SpecRules s=null) { super(s, lengthOfCRC, 0); }
 
 protected override:
-    void startMessage(void[] buf, ref size_t idx, ulong dev, ubyte fnc)
+    void startMessage(void[] buf, ref size_t idx, ulong dev, ubyte fnc, ulong stamp)
     { appendDF(buf, idx, dev, fnc); }
 
     void finalizeMessage(void[] buf, ref size_t idx)
     { appendBytes(buf, idx, cast(void[])crc16(buf[0..idx])); }
 
     bool check(const(void)[] data) { return checkCRC(data); }
+
+    ulong getStamp(const(void)[] data)
+    {
+        // TODO: rework
+        return stamp++;
+    }
+
     size_t endDataSplit() @property { return lengthOfCRC; }
 }
 
@@ -34,7 +44,7 @@ unittest
     auto rtu = new RTU();
     enum C1 = ushort(10100);
     enum C2 = ushort(12345);
-    auto buf = cast(ubyte[])rtu.buildMessage(data, 1, 6, C1, C2);
+    auto buf = cast(ubyte[])rtu.buildMessage(data, 1, 6, 0, C1, C2);
     assert(equal(buf[0..$-2], cast(ubyte[])[1, 6] ~
                                 nativeToBigEndian(C1) ~
                                 nativeToBigEndian(C2)));

@@ -50,7 +50,15 @@ public:
      +/
     const(void)[] write(Args...)(ulong dev, ubyte fnc, Args args)
     {
-        auto buf = be.buildMessage(buffer, dev, fnc, args);
+        auto buf = be.buildMessage(buffer, dev, fnc, 0, args);
+        con.write(buf);
+        return buf;
+    }
+
+    // ditto
+    const(void)[] writeS(Args...)(ulong dev, ubyte fnc, ulong stamp, Args args)
+    {
+        auto buf = be.buildMessage(buffer, dev, fnc, stamp, args);
         con.write(buf);
         return buf;
     }
