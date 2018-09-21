@@ -24,7 +24,7 @@ class ModbusMaster : Modbus
         import std.datetime.stopwatch : StopWatch, AutoStart;
         import std.algorithm : max;
 
-        size_t minRead = be.aduLength;
+        size_t minRead = be.aduLength(1); // one byte data in error messages
         size_t mustRead;
 
         mustRead = bytes >= 0 ? be.aduLength(bytes) : buffer.length;
@@ -66,6 +66,9 @@ class ModbusMaster : Modbus
         return msg.data;
     }
 
+    auto requestReadTimeInterval = 20.msecs;
+    void delegate(ModbusMaster self) requestPreReadHook;
+
     /++ Write and read to modbus
 
         Params:
@@ -80,15 +83,9 @@ class ModbusMaster : Modbus
                                    ptrdiff_t bytes, Args args)
     {
         auto tmp = write(dev, fnc, args);
-
-        import core.thread;
-        auto dt = 20.msecs;
-        auto sw = StopWatch(AutoStart.yes);
-        if (auto f = Fiber.getThis)
-            while (sw.peek < dt)
-                f.yield();
-        else Thread.sleep(dt);
-
+        import modbus.msleep;
+        msleep(requestReadTimeInterval);
+        if (requestPreReadHook !is null) requestPreReadHook(this);
         try return read(dev, fnc, bytes);
         catch (ModbusDevException e)
         {
