@@ -67,7 +67,7 @@ class ModbusMaster : Modbus
     }
 
     auto requestReadTimeInterval = 20.msecs;
-    void delegate(const(void)[] writed) requestPreReadHook;
+    void delegate(void[] buf, size_t writed) requestPreReadHook;
 
     /++ Write and read to modbus
 
@@ -82,11 +82,15 @@ class ModbusMaster : Modbus
     const(void)[] request(Args...)(ulong dev, ubyte fnc,
                                    ptrdiff_t bytes, Args args)
     {
-        auto tmp = write(dev, fnc, args);
         import modbus.msleep;
+
+        auto tmp = write(dev, fnc, args);
+
         msleep(requestReadTimeInterval);
+
         if (requestPreReadHook !is null)
-            requestPreReadHook(tmp);
+            requestPreReadHook(buffer[], tmp.length);
+
         try return read(dev, fnc, bytes);
         catch (ModbusDevException e)
         {
