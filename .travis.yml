@@ -29,6 +29,10 @@ d:
 
 matrix:
   allow_failures:
+    - d: dmd-nightly
+      os: osx
+    - d: dmd-nightly
+      os: linux
     - d: ldc
       os: osx
     - d: ldc-beta
