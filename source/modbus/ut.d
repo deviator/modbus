@@ -2,29 +2,26 @@ module modbus.ut;
 
 version (unittest): package:
 
-public
-{
-    import core.thread;
+import core.thread;
 
-    import std.array;
-    import std.algorithm;
-    import std.concurrency;
-    import std.conv;
-    import std.datetime.stopwatch;
-    import std.exception;
-    import std.format;
-    import std.random;
-    import std.range;
-    import std.stdio : stderr;
-    import std.string;
-    import std.random;
-    import std.process;
+import std.array;
+import std.algorithm;
+import std.concurrency;
+import std.conv;
+import std.datetime.stopwatch;
+import std.exception;
+import std.format;
+import std.random;
+import std.range;
+import std.stdio : stderr;
+import std.string;
+import std.random;
+import std.process;
 
-    import modbus.connection;
-    import modbus.backend;
-    import modbus.protocol.master;
-    import modbus.msleep;
-}
+import modbus.connection;
+import modbus.backend;
+import modbus.protocol.master;
+import modbus.msleep;
 
 enum test_print_offset = "    ";
 
@@ -64,22 +61,14 @@ class SocatPipe : ComPipe
 {
     int bufferSize;
     ProcessPipes pipe;
-    string[2] _ports;
+    string[2] _ports = ["./tmp1.port", "./tmp2.port"];
     string _command;
 
     this(int bs)
     {
         bufferSize = bs;
-        _command = ("socat -d -d -b%d pty,raw,"~
-                    "echo=0 pty,raw,echo=0").format(bufferSize);
-    }
-
-    static string parsePort(string ln)
-    {
-        auto ret = ln.split[$-1];
-        enforce(ret.startsWith("/dev/"),
-        "unexpected last word in output line '%s'".format(ln));
-        return ret;
+        _command = format!"socat -b%d pty,raw,echo=0,link=%s pty,raw,echo=0,link=%s"
+                    (bufferSize, _ports[0], _ports[1]);
     }
 
     override void close()
@@ -91,8 +80,7 @@ class SocatPipe : ComPipe
     override void open()
     {
         pipe = pipeShell(_command);
-        _ports[0] = parsePort(pipe.stderr.readln.strip);
-        _ports[1] = parsePort(pipe.stderr.readln.strip);
+        Thread.sleep(1000.msecs); // wait for socat create ports
     }
     
     override const @property
@@ -100,13 +88,6 @@ class SocatPipe : ComPipe
         string command() { return _command; }
         string[2] ports() { return _ports; }
     }
-}
-
-unittest
-{
-    enum socat_out_ln = "2018/03/08 02:56:58 socat[30331] N PTY is /dev/pts/1";
-    assert(SocatPipe.parsePort(socat_out_ln) == "/dev/pts/1");
-    assertThrown(SocatPipe.parsePort("some string"));
 }
 
 class DefinedPorts : ComPipe
@@ -162,5 +143,124 @@ ComPipe getPlatformComPipe(int bufsz)
         stderr.writeln(" error while open predefined ports: ", e.msg);
         version (Posix) return new SocatPipe(bufsz);
         else return null;
+    }
+}
+
+// slave tests
+
+import modbus;
+
+unittest
+{
+    mixin(mainTestMix);
+
+    ut!fiberVirtualPipeBasedTest();
+
+    auto cp = getPlatformComPipe(BUFFER_SIZE);
+
+    if (cp is null)
+    {
+        stderr.writeln(" platform doesn't support real test");
+        return;
+    }
+
+    stderr.writefln(" port source `%s`\n", cp.command);
+    try cp.open();
+    catch (Exception e) stderr.writeln(" can't open com pipe: ", e.msg);
+    scope (exit) cp.close();
+    stderr.writefln(" pipe ports: %s <=> %s", cp.ports[0], cp.ports[1]);
+
+    ut!fiberSerialportBasedTest(cp.ports);
+}
+
+void fiberVirtualPipeBasedTest()
+{
+    auto con = virtualPipeConnection(256, "test");
+    baseModbusTest!RTU(con[0], con[1]);
+    baseModbusTest!TCP(con[0], con[1]);
+}
+
+void fiberSerialportBasedTest(string[2] ports)
+{
+    enum spmode = "8N1";
+
+    import std.typecons : scoped;
+    import serialport;
+    import modbus.connection.rtu;
+
+    auto p1 = scoped!SerialPortFR(ports[0], spmode);
+    auto p2 = scoped!SerialPortFR(ports[1], spmode);
+    p1.flush();
+    p2.flush();
+
+    alias SPC = SerialPortConnection;
+
+    baseModbusTest!RTU(new SPC(p1), new SPC(p2));
+    baseModbusTest!TCP(new SPC(p1), new SPC(p2));
+}
+
+void baseModbusTest(Be: Backend)(Connection masterCon, Connection slaveCon, Duration rtm=500.msecs)
+{
+    enum DN = 13;
+    testPrintf!"BE: %s"(Be.classinfo.name);
+
+    enum dln = TestModbusSlaveDevice.Data.sizeof / 2;
+    ushort[] origin = void;
+    TestModbusSlaveDevice.Data* originData;
+
+    bool finish;
+
+    void mfnc()
+    {
+        auto master = new ModbusMaster(new Be, masterCon);
+        masterCon.readTimeout = rtm;
+        Fiber.getThis.yield();
+        auto dt = master.readInputRegisters(DN, 0, dln);
+        assert( equal(origin, dt) );
+        assert( equal(origin[2..4], master.readHoldingRegisters(DN, 2, 2)) );
+
+        master.writeMultipleRegisters(DN, 2, [0xBEAF, 0xDEAD]);
+        assert((*originData).value2 == 0xDEADBEAF);
+        master.writeSingleRegister(DN, 15, 0xABCD);
+        assert((*originData).usv[1] == 0xABCD);
+
+        finish = true;
+    }
+
+    void sfnc()
+    {
+        auto device = new TestModbusSlaveDevice(DN);
+        originData = &device.data;
+
+        auto model = new MultiDevModbusSlaveModel;
+        model.devices ~= device;
+
+        auto slave = new ModbusSlave(model, new Be, slaveCon);
+        Fiber.getThis.yield();
+        while (!finish)
+        {
+            origin = cast(ushort[])((cast(void*)&device.data)[0..dln*2]);
+            slave.iterate();
+            Fiber.getThis.yield();
+        }
+    }
+
+    auto mfiber = new Fiber(&mfnc);
+    auto sfiber = new Fiber(&sfnc);
+
+    bool work = true;
+    int step;
+    while (work)
+    {
+        alias TERM = Fiber.State.TERM;
+        if (mfiber.state != TERM) mfiber.call;
+        //stderr.writeln(getBuffer());
+        if (sfiber.state != TERM) sfiber.call;
+
+        step++;
+        //stderr.writeln(getBuffer());
+        Thread.sleep(10.msecs);
+        if (mfiber.state == TERM && sfiber.state == TERM)
+            work = false;
     }
 }
