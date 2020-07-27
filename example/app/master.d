@@ -1,47 +1,84 @@
-import std.algorithm;
-import std.stdio;
-import std.conv;
+import std : to, map, array, stderr, stdout, writeln, msecs;
 
 import modbus;
+
+int usage(int code)
+{
+    stderr.writeln("use: example_master RTU <COM> <BAUD> <DEV> <FN> <ADDR> <PARAMS>");
+    stderr.writeln(" or: example_master TCP  <IP> <PORT> <DEV> <FN> <ADDR> <PARAMS>");
+    return code;
+}
 
 int main(string[] args)
 {
     args.each!writeln;
-    version (rtu)
+
+    if (args.length < 7) return usage(1);
+
+    ModbusMaster mm;
+
+    const cmd = args[1];
+    if (cmd == "RTU")
     {
-        pragma(msg, "RTU master");
-        if (args.length < 6)
-        {
-            stderr.writeln("use: example_master <COM> <BAUDRATE> <DEV> <START> <COUNT>");
-            return 1;
-        }
-
-        auto sp = new SerialPortBlk(args[1], args[2].to!uint);
-        auto mm = new ModbusRTUMaster(sp);
-        mm.port.flush(); // in case if before start serial port has data
+        auto sp = new SerialPortBlk(args[2], args[3].to!uint);
+        auto mtmp = new ModbusRTUMaster(sp);
+        mtmp.port.flush(); // in case if before start serial port has data
+        mm = mtmp;
     }
-    else version (tcp)
+    else if (cmd == "TCP")
     {
-        pragma(msg, "TCP master");
-        if (args.length < 6)
-        {
-            stderr.writeln("use: example_master <IP> <PORT> <DEV> <START> <COUNT>");
-            return 1;
-        }
-
-        import modbus.connection.tcp;
-        auto ia = new InternetAddress(args[1], args[2].to!ushort);
-        auto mm = new ModbusTCPMaster(ia);
+        //import modbus.connection.tcp;
+        auto ia = new InternetAddress(args[2], args[3].to!ushort);
+        auto mtmp = new ModbusTCPMaster(ia);
+        mtmp.connection.readTimeout = 1000.msecs;
+        mm = mtmp;
     }
-    else static assert(0, "unknown version");
+    else
+    {
+        stderr.writeln("unknown cmd: " ~ cmd);
+        return usage(1);
+    }
 
-    auto dev = args[3].to!uint;
-    auto start = args[4].to!ushort;
-    auto count = args[5].to!ushort;
+    const dev = args[4].to!uint;
+    const fn = args[5].to!ushort;
+    const addr = args[6].to!ushort;
+    const params = args[7..$].map!(a=>a.to!ushort).array;
 
-    writefln("start");
+    stdout.writefln("start");
     stdout.flush();
-    auto data = mm.readInputRegisters(dev, start, count);
-    writefln("dev #%d\naddr: %d\ncount: %d\ndata: %s", dev, start, count, data);
+    switch (fn)
+    {
+        case 1:
+            const data = mm.readCoils(dev, addr, params[0]);
+            stdout.writefln("dev #%d\naddr: %d\ncount: %d\ndata: %s", dev, addr, params[0], data);
+            break;
+        case 2:
+            const data = mm.readDiscreteInputs(dev, addr, params[0]);
+            stdout.writefln("dev #%d\naddr: %d\ncount: %d\ndata: %s", dev, addr, params[0], data);
+            break;
+        case 3:
+            const data = mm.readHoldingRegisters(dev, addr, params[0]);
+            stdout.writefln("dev #%d\naddr: %d\ncount: %d\ndata: %s", dev, addr, params[0], data);
+            break;
+        case 4:
+            const data = mm.readInputRegisters(dev, addr, params[0]);
+            stdout.writefln("dev #%d\naddr: %d\ncount: %d\ndata: %s", dev, addr, params[0], data);
+            break;
+        case 5:
+            mm.writeSingleCoil(dev, addr, !!params[0]);
+            break;
+        case 6:
+            mm.writeSingleRegister(dev, addr, params[0]);
+            break;
+        case 15:
+            mm.writeMultipleCoils(dev, addr, params[0], params[1..$]);
+            break;
+        case 16:
+            mm.writeMultipleRegisters(dev, addr, params);
+            break;
+        default:
+            stderr.writeln("unsupported function");
+            break;
+    }
     return 0;
 }

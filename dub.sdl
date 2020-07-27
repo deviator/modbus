@@ -2,11 +2,11 @@ name "modbus"
 targetType "library"
 description "Modbus protocol"
 authors "Oleg Butko (deviator)"
-copyright "Copyright © 2017"
+copyright "Copyright © 2017-2020"
 license "MIT"
 
 targetType "library"
-dependency "serialport" version="~>2.2.0"
+dependency "serialport" version="~>2.2.3"
 
 //versions "modbus_verbose"
 //versions "modbus_use_prealloc_exceptions"

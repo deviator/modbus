@@ -1,27 +1,19 @@
-## RTU
-
-### Building
+## Building
 
 Then you run
 
-    dub build --config=rtu-master
-    dub build --config=rtu-slave
+    dub build --config=master
+    dub build --config=slave
 
 you have 2 files: `example_master` and `example_slave`.
 
-### Prepare env
+## Prepare env
 
 You need to emulate serial port pipe:
 
-    sudo socat -d -d pty,raw,echo=0 pty,raw,echo=0
+    socat pty,raw,echo=0,link=./master.port pty,raw,echo=0,link=./slave.port
 
-`socat` show you output like this:
-
-    2018/03/02 14:25:31 socat[13578] N PTY is /dev/pts/5
-    2018/03/02 14:25:31 socat[13578] N PTY is /dev/pts/6
-    2018/03/02 14:25:31 socat[13578] N starting data transfer loop with FDs [5,5] and [7,7]
-    
-`/dev/pts/5` and `/dev/pts/6` are your created virtual serial ports.
+`./master.port` and `./slave.port` are your created virtual serial ports.
 
 As alternative you can use 2 usb->serial converters and connect them.
 
@@ -29,16 +21,24 @@ Example programs must can access to devices:
 
     sudo chmod 0777 /dev/pts/* # access for all users
 
-### Run
+## Run
 
 By first you need run slave:
     
-    ./example_slave /dev/pts/5 9600 22
+    ./example_slave RTU ./slave.port 9600 22
+
+or
+
+    ./example_slave TCP localhost 2000 22
 
 After slave started you can read input registers:
 
-    ./example_master /dev/pts/6 9600 22 2 5
+    ./example_master RTU ./master.port 9600 22 4 2 5
 
-Use different names of virtual serial port pipe (`/dev/pts/5` and `/dev/pts/6`).
-`9600` is a baudrate, `22` is device number on modbus bus,
+or
+
+    ./example_master TCP localhost 2000 22 4 2 5
+
+`2000` is a tcp port, `9600` is a baudrate,
+`22` is device number on modbus bus, `4` is a function number,
 `2` is start register, `5` is count of registers.

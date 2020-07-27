@@ -6,6 +6,8 @@ import core.thread;
 
 import modbus;
 
+import aslike;
+
 class DevSim : SimpleModbusSlaveDevice
 {
     ushort[] buf;
@@ -33,34 +35,29 @@ class DevSim : SimpleModbusSlaveDevice
     }
 }
 
+interface Iterable { void iterate(); }
+
 int main(string[] args)
 {
     args.each!writeln;
 
-    if (args.length < 4)
-    {
-        version (rtu) enum msg = "use: example_slave <COM> <BAUD> <DEV>";
-        version (tcp) enum msg = "use: example_slave  <IP> <PORT> <DEV>";
-        return fail(msg);
-    }
-    auto str = args[1];
-    auto numb = args[2].to!uint;
-    auto dev = args[3].to!uint;
+    if (args.length < 5) return usage(1);
+
+    const cmd = args[1];
+    auto str = args[2];
+    auto numb = args[3].to!uint;
+    auto dev = args[4].to!uint;
 
     auto mdl = new MultiDevModbusSlaveModel;
     mdl.devices ~= new DevSim(dev);
 
-    version (rtu)
-    {
-        pragma(msg, "RTU slave");
-        auto ds = new ModbusRTUSlave(mdl, new SerialPortBlk(str, numb));
-    }
-    else version (tcp)
-    {
-        pragma(msg, "TCP slave");
-        auto ds = new ModbusTCPSlaveServer(mdl, new InternetAddress(str, cast(ushort)numb));
-    }
-    else static assert(0, "unknown version");
+    Like!Iterable ds;
+
+    if (cmd == "RTU")
+        ds = (new ModbusRTUSlave(mdl, new SerialPortBlk(str, numb))).as!Iterable;
+    else if (cmd == "TCP")
+        ds = (new ModbusTCPSlaveServer(mdl, new InternetAddress(str, cast(ushort)numb))).as!Iterable;
+    else return usage(1);
 
     writefln("start");
     stdout.flush();
@@ -69,6 +66,13 @@ int main(string[] args)
         ds.iterate();
         Thread.sleep(1.msecs);
     }
+}
+
+int usage(int code)
+{
+    stderr.writeln("use: example_slave RTU <COM> <BAUD> <DEV>");
+    stderr.writeln(" or: example_slave TCP  <IP> <PORT> <DEV>");
+    return code;
 }
 
 int fail(string str)
