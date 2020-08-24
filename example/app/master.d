@@ -1,11 +1,11 @@
-import std : to, map, array, stderr, stdout, writeln, msecs;
+import std : to, map, array, stderr, stdout, writeln, msecs, toLower;
 
 import modbus;
 
 int usage(int code)
 {
-    stderr.writeln("use: example_master RTU <COM> <BAUD> <DEV> <FN> <ADDR> <PARAMS>");
-    stderr.writeln(" or: example_master TCP  <IP> <PORT> <DEV> <FN> <ADDR> <PARAMS>");
+    stderr.writeln("use: example_master RTU     <COM> <BAUD> <DEV> <FN> <ADDR> <PARAMS>");
+    stderr.writeln(" or: example_master TCP[4|6] <IP> <PORT> <DEV> <FN> <ADDR> <PARAMS>");
     return code;
 }
 
@@ -25,10 +25,20 @@ int main(string[] args)
         mtmp.port.flush(); // in case if before start serial port has data
         mm = mtmp;
     }
-    else if (cmd == "TCP")
+    else if (cmd.startsWith("TCP"))
     {
         //import modbus.connection.tcp;
-        auto ia = new InternetAddress(args[2], args[3].to!ushort);
+        import std.socket;
+        Address ia;
+        if (cmd == "TCP" || cmd.endsWith("4"))
+            ia = new InternetAddress(args[2], args[3].to!ushort);
+        else if (cmd.endsWith("6"))
+            ia = new Internet6Address(args[2], args[3].to!ushort);
+        else
+        {
+            stderr.writeln("unknown cmd: " ~ cmd);
+            return usage(1);
+        }
         auto mtmp = new ModbusTCPMaster(ia);
         mtmp.connection.readTimeout = 1000.msecs;
         mm = mtmp;

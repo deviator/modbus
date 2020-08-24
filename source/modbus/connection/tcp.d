@@ -112,7 +112,7 @@ public:
 
     protected void initSock()
     {
-        sock = new TcpSocket();
+        sock = new TcpSocket(addr.addressFamily);
         sock.blocking = true;
         sock.connect(addr);
         sock.blocking = false;

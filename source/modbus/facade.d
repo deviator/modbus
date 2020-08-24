@@ -132,7 +132,7 @@ public:
         sleepFunc = sf;
         messageFinder = mf;
 
-        serv = new TcpSocket;
+        serv = new TcpSocket(addr.addressFamily);
         serv.blocking = false;
         serv.bind(addr);
         serv.listen(acceptConQueueLen);
