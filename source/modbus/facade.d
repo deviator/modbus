@@ -7,12 +7,12 @@ import modbus.protocol;
 public import std.datetime : Duration, dur, hnsecs, usecs, nsecs, msecs, seconds;
 
 import modbus.connection.tcp;
-import std.socket : Socket, SocketSet, TcpSocket, SocketShutdown;
+import std.socket;
 
 import modbus.connection.rtu;
 
 public import serialport;
-public import std.socket : InternetAddress;
+public import std.socket : InternetAddress, Internet6Address;
 
 /// Modbus master with RTU backend
 class ModbusRTUMaster : ModbusMaster
@@ -126,6 +126,12 @@ public:
     this(ModbusSlaveModel mdl, Address addr, int acceptConQueueLen=16,
          size_t maxConCount=128, void delegate(Duration) sf=null, SpecRules sr=null,
          ModbusSlave.MessageFinder mf=null)
+    { this(mdl, addr, false, acceptConQueueLen, maxConCount, sf, sr, mf); }
+
+    ///
+    this(ModbusSlaveModel mdl, Address addr, bool reuseAddr, int acceptConQueueLen=16,
+         size_t maxConCount=128, void delegate(Duration) sf=null, SpecRules sr=null,
+         ModbusSlave.MessageFinder mf=null)
     {
         model = mdl;
         be = new TCP(sr);
@@ -134,6 +140,9 @@ public:
 
         serv = new TcpSocket(addr.addressFamily);
         serv.blocking = false;
+        if (reuseAddr)
+            serv.setOption(SocketOptionLevel.SOCKET,
+                           SocketOption.REUSEADDR, 1);
         serv.bind(addr);
         serv.listen(acceptConQueueLen);
         this.maxConCount = maxConCount;
@@ -192,6 +201,7 @@ public:
     ///
     void halt()
     {
+        foreach (sl; slaves) sl.con.close();
         serv.shutdown(SocketShutdown.BOTH);
         serv.close();
     }
