@@ -172,9 +172,17 @@ public:
 
         foreach (sl; slaves)
         {
-            try sl.call;
-            catch (CloseTcpConnection)
+            try
+            {
+                try sl.call;
+                catch (CloseTcpConnection)
+                    sl.con.close();
+            }
+            catch (Exception e)
+            {
+                error("modbus tcp exception: ", e.msg);
                 sl.con.close();
+            }
 
             this.yield();
         }
