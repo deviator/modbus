@@ -27,7 +27,7 @@ class ModbusMaster : Modbus
         size_t minRead = be.aduLength(1); // one byte data in error messages
         size_t mustRead;
 
-        mustRead = bytes >= 0 ? be.aduLength(bytes) : buffer.length;
+        mustRead = bytes > 0 ? be.aduLength(bytes) : buffer.length;
 
         Message msg;
 
@@ -45,9 +45,9 @@ class ModbusMaster : Modbus
             if (minRead == mustRead)
                 throwCheckFailException(dev, fnc);
 
-            con.read(buffer[minRead..mustRead], bytes < 0 ?
-                                   con.CanRead.anyNonZero : con.CanRead.allOrNothing);
-            if (be.ParseResult.success != be.parseMessage(buffer[0..mustRead], msg))
+            const rr = con.read(buffer[minRead..mustRead], bytes == 0 ?
+                                con.CanRead.anyNonZero : con.CanRead.allOrNothing).length;
+            if (be.ParseResult.success != be.parseMessage(buffer[0..minRead+rr], msg))
                 throwCheckFailException(dev, fnc);
         } // else it's error message
 
